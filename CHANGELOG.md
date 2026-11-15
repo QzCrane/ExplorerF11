@@ -2,6 +2,32 @@
 
 All notable changes to this project. Versions follow [SemVer](https://semver.org/).
 
+## 6.1.1 - 2026-11-15
+
+Terminology fix. The status line said "N windows" while a user could see two tabs
+in one window and had no way to reconcile the two numbers; the new-tab setting
+also implied that a tab could be accelerated on its own, which it cannot.
+
+### Changed
+- **The unit is stated and shown in full**: the tooltip, the menu header and the
+  footprint report now read "已加速 1 个窗口（含 2 个选项卡）" / "1 window
+  accelerated (2 tabs)". The figure before the bracket is the unit of the action;
+  the bracket is what those windows currently hold. Both are produced by one
+  function in `footprint.cpp`, so the three surfaces cannot drift apart.
+- **`新标签页也加速` → `新建选项卡时重新加速窗口`** ("Accelerate new tabs" →
+  "Re-accelerate the window on new tabs"). The old label claimed a per-tab
+  action; F11 is handled by the window frame, and a tab has no F11 state.
+- **Chinese terminology follows Windows**: 选项卡, the term Microsoft uses in the
+  Simplified Chinese Explorer UI and documentation, instead of 标签页.
+- `--help`, both READMEs, `USAGE` (both languages) and `ARCHITECTURE` define the
+  unit and explain why tabs are contents, not a second unit.
+
+### Tests
+- `test_menu_order.py` takes the expected version from `--version` instead of
+  hard-coding it, matches the status line against a complete pattern, requires the
+  tab count whenever a window count is shown, and asserts that `--help` documents
+  the unit in both languages.
+
 ## 6.1.0 - 2026-11-15
 
 Language-switching release. The UI was bilingual since 6.0.0 but could only be

@@ -16,6 +16,7 @@ Run:  python tests/test_footprint_report.py
 
 import ctypes
 import os
+import re
 import subprocess
 import sys
 import time
@@ -247,6 +248,19 @@ check_true("可清理标记存在", "· 可清理" in out or clean)
 check_true("报告声明只读", "本报告只读" in out)
 check_true("结论含总数与分组", ("需要清理" in out and "Windows 自动记录" in out) or clean)
 
+# 窗口标记是唯一一处「数字带单位」的条目。有已加速窗口时，它必须按窗口计数
+# 并把选项卡数放在括号里 —— 菜单、托盘提示用的是同一个函数。
+zh_lines = out.splitlines()
+mark_i = next((i for i, l in enumerate(zh_lines) if "窗口标记（只在内存中）" in l), None)
+if mark_i is not None and "存在" in zh_lines[mark_i]:
+    content = next((l.strip() for l in zh_lines[mark_i:mark_i + 5]
+                    if l.strip().startswith("内容：")), "")
+    check_true("窗口标记：窗口为单位，括号里是选项卡数",
+               re.fullmatch(r"内容：已加速 \d+ 个窗口（含 \d+ 个选项卡）", content) is not None,
+               content)
+else:
+    print("SKIP  窗口标记（当前没有已加速窗口）")
+
 print("\n==== 3. 英文版：同样的结构，没有中文 ====")
 p = subprocess.run([EXE, "--status", "--lang", "en"], capture_output=True, timeout=25)
 en = p.stdout.decode("utf-8", "replace")
@@ -262,6 +276,16 @@ check_true("英文版没有中文字符",
 check_true("英文版标题正确", en.startswith("ExplorerF11 "), en.splitlines()[0])
 check_true("中文版标题正确", out.startswith("ExplorerF11 "), out.splitlines()[0])
 check_true("英文版声明只读", "read-only" in en)
+en_lines = en.splitlines()
+en_mark = next((i for i, l in enumerate(en_lines) if "Window marks (memory only)" in l), None)
+if en_mark is not None and "present" in en_lines[en_mark]:
+    what = next((l.strip() for l in en_lines[en_mark:en_mark + 5]
+                 if l.strip().startswith("what:")), "")
+    check_true("英文窗口标记：windows 为主单位，tabs 在括号里",
+               re.fullmatch(r"what:\s+\d+ windows? accelerated \(\d+ tabs?\)", what) is not None,
+               what)
+else:
+    print("SKIP  window marks (no accelerated window right now)")
 check_true("英文版单复数正确",
            "(1 item)" in en or "(0 items)" in en or "1 item to remove" in en
            or "0 items to remove" in en, "")

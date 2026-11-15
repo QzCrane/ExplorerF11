@@ -10,6 +10,10 @@ Every time Explorer opens a folder window, this tool performs one fullscreen
 round trip on that window. New tabs and windows restored from the taskbar get the
 same treatment. Afterwards, navigating in that window is noticeably smoother.
 
+Acceleration is counted per **window**, not per tab: F11 is handled by the window
+frame, so one round trip covers every tab in that window at once. A tab has no
+F11 state of its own and is never accelerated on its own.
+
 It posts keyboard messages and nothing else: no injection, no system files
 touched, no administrator rights, and no change to Explorer's UI (it coexists
 with ExplorerPatcher and StartAllBack).
@@ -44,13 +48,13 @@ If you move it after enabling autostart, tick the item again.
 Fixed five-part layout, top to bottom:
 
 ```
-ExplorerF11 6.1.0  ·  3 windows accelerated     <- grey, not clickable
+ExplorerF11 6.1.1  ·  3 windows accelerated (5 tabs)   <- grey, not clickable
 ────────────────────────────
 Apply to all open windows
 Apply to the active window
 Pause acceleration
 ────────────────────────────
-✓ Accelerate new tabs
+✓ Re-accelerate the window on new tabs
 ✓ Accelerate windows open at start-up
 ✓ Start with Windows
 Language  ▸  中文（简体） / English
@@ -63,11 +67,11 @@ Exit
 
 | Item | What it does |
 |---|---|
-| Status line | Name, version and *running, waiting for windows / N windows accelerated / paused*. Answers "is it working" without a click, and identifies the build in a bug report |
+| Status line | Name, version and *running, waiting for a folder window / N windows accelerated (M tabs) / paused*. Answers "is it working" without a click, and identifies the build in a bug report |
 | Apply to all open windows | Forces a redo, including windows already done. Useful after a theme or scaling change |
 | Apply to the active window | Acts on the last folder window you used. Greys out when there is none, instead of doing nothing |
 | Pause / Resume acceleration | Stops work temporarily, e.g. while opening a dozen windows. Not remembered |
-| Accelerate new tabs | On by default. Turning it off avoids the brief flash on every `+` |
+| Re-accelerate the window on new tabs | On by default. Pressing `+` redoes the **containing window**, not just that tab. Turning it off avoids the whole-window flash |
 | Accelerate windows open at start-up | On by default. Off means only windows created later are handled |
 | Start with Windows | The tick reflects what will actually happen, even after a Task Manager disable |
 | Language | Submenu with two radio rows: **中文（简体）** and **English**. Applies immediately and is remembered |
@@ -76,6 +80,26 @@ Exit
 
 *Clear* is deliberately not adjacent to *Exit*: one separator and a trailing `…`
 in between. A misclick there costs a reinstall.
+
+### The unit is the window, not the tab
+
+The number in the status line counts **windows** (`CabinetWClass`, one Explorer
+window frame), not tabs. That is a property of the mechanism, not a naming
+choice:
+
+- `F11` is handled by the window frame. One round trip applies to the whole
+  window: eight tabs in one window still read as "1 window", and all eight share
+  that window's accelerated state.
+- A tab is a child window (`ShellTabWindowClass`) with no F11 state of its own,
+  so it cannot be accelerated separately. The tool does not pretend otherwise:
+  *Re-accelerate the window on new tabs* redoes the **containing window**.
+- Hence "1 window accelerated (2 tabs)": the figure before the bracket is the
+  unit of the action; the bracket is how many tabs those windows currently hold.
+  A window without tabs (an older Explorer) omits the bracket.
+
+The footprint report's fourth item, *Window marks*, prints the same sentence from
+the same function, so the menu, the tooltip and the report cannot show two
+different numbers.
 
 Settings read as states, not verbs: a ticked box is the answer, and there is
 nothing to translate in your head.
@@ -86,7 +110,7 @@ nothing to translate in your head.
 saying where the numbers come from:
 
 ```
-ExplorerF11 6.1.0 - footprint report
+ExplorerF11 6.1.1 - footprint report
 program: D:\Tools\ExplorerF11.exe
 time:    2026-11-15 11:20:31 (local) - UI language: English
 scope:   14 possible locations in 4 groups; each one is checked below, including
@@ -175,7 +199,7 @@ Three; the first two are on by default.
 
 | Setting | Default | Stored in |
 |---|---|---|
-| Accelerate new tabs | on | `HKCU\Software\ExplorerF11\Tabs` (exists only while off) |
+| Re-accelerate the window on new tabs | on | `HKCU\Software\ExplorerF11\Tabs` (exists only while off) |
 | Accelerate windows open at start-up | on | same key, `InitialSweep` |
 | UI language | follow the system | same key, `Language` (exists only while it differs) |
 
@@ -191,14 +215,14 @@ separates "never triggered" from "triggered but no effect". If a forced redo doe
 nothing, this Windows build changed the behaviour; `--log` records an
 `accelerated:` line per window, which tells you whether the messages were posted.
 
-**New tabs are not handled.**
-Confirm *Accelerate new tabs* is ticked. If it is, the window was probably skipped
-at start-up (it existed before the tool, with the start-up sweep disabled). Apply
-once manually.
+**A newly opened tab is not handled.**
+Confirm *Re-accelerate the window on new tabs* is ticked. If it is, the window was
+probably skipped at start-up (it existed before the tool, with the start-up sweep
+disabled). Apply once manually.
 
 **The window flashes when I press `+`.**
-That is the cost of the fullscreen round trip. Turn *Accelerate new tabs* off if it
-bothers you; the window itself stays accelerated.
+That is the cost of the fullscreen round trip. Turn *Re-accelerate the window on
+new tabs* off if it bothers you; the window itself stays accelerated.
 
 **Where do I change the language?**
 Tray → *Language*. Both rows are written in their own script — 中文（简体） and

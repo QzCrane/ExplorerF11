@@ -35,14 +35,18 @@ jobs:
           rem encoding cannot influence the result.
           dist\ExplorerF11.exe --version --quiet > dist\version.txt 2>&1
           type dist\version.txt
-          findstr /C:"ExplorerF11 6.1.0" dist\version.txt >nul || exit /b 1
+          findstr /C:"ExplorerF11 6.1.1" dist\version.txt >nul || exit /b 1
 
           dist\ExplorerF11.exe --help --quiet > dist\help.txt 2>&1
           findstr /C:"--status" dist\help.txt >nul || exit /b 1
+          rem The help must state the counting unit: windows, never tabs.
+          findstr /C:"counted in windows" dist\help.txt >nul || exit /b 1
 
           dist\ExplorerF11.exe --menu --lang en --quiet > dist\menu-en.txt 2>&1
           type dist\menu-en.txt
           findstr /C:"Language" dist\menu-en.txt >nul || exit /b 1
+          rem The per-tab wording was retired in 6.1.1; it must not come back.
+          findstr /C:"Re-accelerate the window on new tabs" dist\menu-en.txt >nul || exit /b 1
 
           rem The Chinese dump must not carry the English labels; that absence is
           rem what proves --lang really re-localised the menu.

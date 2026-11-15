@@ -9,8 +9,10 @@ of XAML. Every navigation re-synchronises that chrome. Pressing `F11` twice
 window navigates noticeably faster. That trick is well known and entirely manual.
 
 ExplorerF11 automates it: when a folder window appears, or you open a new tab in
-one, it posts the same two F11 cycles to that window. No polling, no focus
-stealing, no administrator rights, one 292 KB exe.
+one, it posts the same two F11 cycles to that window. Acceleration is counted per
+window - every tab in a window is covered by the same round trip, and no tab is
+ever accelerated on its own. No polling, no focus stealing, no administrator
+rights, one 294 KB exe.
 
 > **This is not a bug fix.** It automates a workaround for undocumented shell
 > behaviour. Microsoft has never shipped a patch that targets this difference;

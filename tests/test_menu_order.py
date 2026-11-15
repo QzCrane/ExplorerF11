@@ -8,6 +8,7 @@ four spaces under their "[>]" parent. Read-only: it must not write a single
 registry value.
 """
 import os
+import re
 import subprocess
 import sys
 import winreg
@@ -82,19 +83,31 @@ check("不写注册表（前后完全一致）", after, before)
 
 print("\n==== 2. 逐行顺序（中文）====")
 HEAD = rows[0] if rows else ""
+def version():
+    p = subprocess.run([EXE, "--version"], capture_output=True, text=True,
+                       encoding="utf-8", errors="replace")
+    return p.stdout.strip().replace("ExplorerF11 ", "").strip()
+
+VERSION = version()
 check_true("第 1 行是灰色状态行", HEAD.startswith("[x] ExplorerF11"), HEAD)
-check_true("状态行带版本号", "6.1.0" in HEAD, HEAD)
+check_true("状态行版本号与 --version 一致", VERSION in HEAD, HEAD)
+# 状态行只有四种形态。数量和单位写死在这里：窗口数后面必须带选项卡数，
+# 否则又会回到「明明看得见两个 tab，却只说 1 个窗口」。
 check_true("状态行内容合法",
-           HEAD.endswith("暂停加速") or HEAD.endswith("等待新的文件夹窗口")
-           or ("已加速" in HEAD and HEAD.endswith("个窗口")), HEAD)
+           re.fullmatch(r"\[x\] ExplorerF11 " + re.escape(VERSION) +
+                        r"  ·  (已暂停加速|运行中，等待文件夹窗口|"
+                        r"已加速 \d+ 个窗口(（含 \d+ 个选项卡）)?)", HEAD) is not None,
+           HEAD)
+if "已加速" in HEAD:
+    check_true("窗口数后面带着选项卡数", "（含 " in HEAD and HEAD.endswith("个选项卡）"), HEAD)
 
 want = [
     "----",
     "[ ] 对所有已打开的窗口应用",
-    "[ ] 对当前窗口立即应用",
+    None,                            # 对当前窗口立即应用 —— 无可用窗口时置灰
     "[ ] 暂停加速",
     "----",
-    "[✓] 新标签页也加速",
+    "[✓] 新建选项卡时重新加速窗口",
     "[✓] 启动时处理已打开的窗口",
     None,                            # 开机自启 —— 勾选反映真实自启状态
     "[>] 界面语言",
@@ -115,6 +128,11 @@ for i, w in enumerate(want):
             check_true("第 %d 行是开机自启且带勾选位" % (i + 2),
                        (got.startswith("[✓] ") or got.startswith("[ ] "))
                        and got.endswith("开机自启"), got)
+        elif i == 2:
+            # 没有可用目标窗口时置灰，是正确行为；这一行只钉位置与文案。
+            check_true("第 %d 行是对当前窗口立即应用（可灰）" % (i + 2),
+                       got[:4] in ("[ ] ", "[x] ") and got.endswith("对当前窗口立即应用"),
+                       got)
         else:
             check_true("第 %d 行是足迹报告" % (i + 2),
                        got.startswith("[ ] 足迹报告（") and got.endswith("）…"), got)
@@ -146,7 +164,8 @@ check_true("只有维护段带省略号",
            sum(1 for r in rest if "…" in r) == 2,
            "带 … 的行：%d" % sum(1 for r in rest if "…" in r))
 check_true("没有残留旧文案",
-           not any("注册表足迹" in r or "Run at logon" in r for r in rest))
+           not any("注册表足迹" in r or "Run at logon" in r or "新标签页" in r
+                   for r in rest))
 
 print("\n==== 4. 英文菜单：同样结构、无中文残留（语言名除外）====")
 code_en, rows_en = menu("en")
@@ -161,6 +180,19 @@ check_true("英文足迹报告项", any(r.startswith("[ ] Footprint report (") f
 
 print("\n==== 5. 暂停/恢复只占一行 ====")
 check("暂停/恢复只占一行", sum(1 for r in rest if "暂停加速" in r or "恢复加速" in r), 1)
+
+print("\n==== 6. 帮助里写明计数单位 ====")
+def help_text(lang):
+    env = dict(os.environ, EXPLORERF11_LANG=lang)
+    p = subprocess.run([EXE, "--help"], capture_output=True, text=True,
+                       encoding="utf-8", errors="replace", env=env)
+    return p.stdout
+
+zh_help, en_help = help_text("zh"), help_text("en")
+check_true("中文帮助：以窗口为单位，选项卡不单独加速",
+           "以窗口为单位" in zh_help and "选项卡不会单独加速" in zh_help)
+check_true("英文帮助：counted in windows, never per tab",
+           "counted in windows" in en_help and "never accelerated on its own" in en_help)
 
 print("\n" + ("全部通过" if fails == 0 else "%d 项失败" % fails))
 sys.exit(1 if fails else 0)

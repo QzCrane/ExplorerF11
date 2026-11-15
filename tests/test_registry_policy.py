@@ -185,7 +185,7 @@ start()
 check("能定位到隐藏窗口", bool(hwnd()), True)
 
 cmd(IDM_TABS)
-check("关掉「新标签页」后出现配置键", key_exists(CFG), True)
+check("关掉「新建选项卡时重新加速窗口」后出现配置键", key_exists(CFG), True)
 check("Tabs 值为 0", val(CFG, "Tabs"), 0)
 
 cmd(IDM_TABS)

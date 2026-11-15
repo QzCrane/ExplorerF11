@@ -78,6 +78,21 @@ The mark also carries a tick count, used as a 1.2 s gate: when a window is creat
 it creates its first tab immediately, and the tab hook would otherwise fire a
 second F11 cycle on a window that is still animating.
 
+## What the count means
+
+`MarkedWindows()` in `footprint.cpp` walks the top-level windows once, counts the
+ones carrying the mark, and for each counts its direct `ShellTabWindowClass`
+children. The same function formats the sentence ("1 window accelerated (2 tabs)"),
+and the tooltip, the menu header and the footprint report all call it. No other
+file builds a count of its own, so the three surfaces cannot disagree.
+
+The unit is the window because the action is: `PostF11Raw` posts to the frame
+(`CabinetWClass`), and the whole frame — every tab in it — enters and leaves
+fullscreen together. A tab has no independent F11 state, so counting tabs as
+separately accelerated would claim something the tool cannot do. The bracketed
+figure describes what those windows currently hold, nothing more: a new tab is
+handled by re-posting to its parent, never by poking the tab itself.
+
 ## Explorer restart
 
 `explorer.exe` restarting destroys the shell hook registration and the tray icon.
@@ -100,7 +115,7 @@ Measured with `test_smoke.py` on 26300.9974, one folder window open:
 | Handles | 148 | of which 1 is ours (the single-instance mutex); the rest are the window, hooks, tray icon and thread pool |
 | Threads | 4 → 1 | 3 are `TpWorkerFactory` helpers that exit after ~45 s idle |
 | CPU | 0 % | blocked in `GetMessageW` |
-| Disk | 292 KB | static CRT, `-Os`, stripped |
+| Disk | 294 KB | static CRT, `-Os`, stripped |
 
 ## Settings
 

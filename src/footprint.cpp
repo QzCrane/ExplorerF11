@@ -358,13 +358,46 @@ std::wstring ItemsBytes(int n, DWORD bytes) {
 
 }  // namespace
 
-int MarkedWindowCount() {
-    struct Ctx { int n; } ctx = {0};
+WindowMarks MarkedWindows() {
+    struct Ctx { WindowMarks m; } ctx = {};
     EnumWindows([](HWND h, LPARAM p) -> BOOL {
-        if (GetPropW(h, PROP_MARK)) ++reinterpret_cast<Ctx *>(p)->n;
+        if (!GetPropW(h, PROP_MARK)) return TRUE;
+        Ctx *c = reinterpret_cast<Ctx *>(p);
+        ++c->m.windows;
+        // Tabs are direct children of the frame, one ShellTabWindowClass per
+        // tab. A build without tabs (or a window mid-teardown) reports none,
+        // which the formatter renders as a plain window count.
+        for (HWND k = GetWindow(h, GW_CHILD); k; k = GetWindow(k, GW_HWNDNEXT)) {
+            wchar_t cn[64];
+            if (GetClassNameW(k, cn, 64) && wcscmp(cn, TAB_CLASS) == 0) ++c->m.tabs;
+        }
         return TRUE;
     }, (LPARAM)&ctx);
-    return ctx.n;
+    return ctx.m;
+}
+
+std::wstring AcceleratedText(const WindowMarks &m) {
+    if (m.windows <= 0)
+        return T(L"运行中，等待文件夹窗口", L"running, waiting for a folder window");
+
+    std::wstring s;
+    if (m.windows == 1) {
+        s = T(L"已加速 1 个窗口", L"1 window accelerated");
+    } else {
+        wchar_t b[64];
+        swprintf_s(b, T(L"已加速 %d 个窗口", L"%d windows accelerated"), m.windows);
+        s = b;
+    }
+
+    // The parenthetical is a statement about contents, never about a second
+    // acceleration: these are the tabs the accelerated windows hold right now.
+    if (m.tabs > 0) {
+        wchar_t b[48];
+        swprintf_s(b, T(L"（含 %d 个选项卡）", m.tabs == 1 ? L" (%d tab)" : L" (%d tabs)"),
+                   m.tabs);
+        s += b;
+    }
+    return s;
 }
 
 std::vector<Footprint> CollectFootprints() {
@@ -514,7 +547,7 @@ std::vector<Footprint> CollectFootprints() {
     }
     // ---- 11. in-memory window marks ------------------------------------
     {
-        int n = MarkedWindowCount();
+        WindowMarks m = MarkedWindows();
         Footprint x;
         x.group   = Group::Ours;
         x.label   = T(L"窗口标记（只在内存中）", L"Window marks (memory only)");
@@ -523,9 +556,9 @@ std::vector<Footprint> CollectFootprints() {
         x.where   = T(L"窗口属性 ExplorerF11.Marked", L"window property ExplorerF11.Marked");
         x.note    = T(L"不落盘：explorer 重启或注销后自动消失，无需清理",
                       L"never touches disk: gone when explorer restarts or you sign out");
-        x.present = n > 0;
+        x.present = m.windows > 0;
         x.deletable = false;
-        if (x.present) x.content = Pad2(n) + T(L" 个窗口", n == 1 ? L" window" : L" windows");
+        if (x.present) x.content = AcceleratedText(m);
         f.push_back(x);
     }
     // ---- 12-14. legacy leftovers ---------------------------------------

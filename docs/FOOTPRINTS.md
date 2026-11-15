@@ -14,7 +14,7 @@ what does.
 | 1 | Settings key | `HKCU\Software\ExplorerF11` | you change a setting away from its default | 12 B per `DWORD`, ~28 B for `Language` | deleted |
 | 2 | Autostart | `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\ExplorerF11` | you tick *Start with Windows* | 150–200 B (path length) | deleted |
 | 3 | Log file | `%TEMP%\ExplorerF11.log` | you run with `--log` | ~200 B | deleted |
-| 4 | Window marks | `ExplorerF11.Marked` property on Explorer windows | every accelerated window | 0 B (memory) | disappears with Explorer |
+| 4 | Window marks | `ExplorerF11.Marked` property on Explorer windows | every accelerated window (one mark per window, however many tabs it holds) | 0 B (memory) | disappears with Explorer |
 
 The settings key can hold at most three values: `Tabs`, `InitialSweep` and
 `Language`. `--clean` deletes the whole key, so a clean also resets the UI

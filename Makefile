@@ -15,7 +15,7 @@ DEP      := $(wildcard src/*.h)
 
 CXXFLAGS ?= -std=c++17 -Os -Wall -Wextra
 CXXFLAGS += -municode
-LDFLAGS  += -mwindows -static -static-libgcc -static-libstdc++
+LDFLAGS  += -mwindows -static -static-libgcc -static-libstdc++ -s
 LDLIBS   := -luser32 -lshell32 -ladvapi32
 
 .PHONY: all debug test clean

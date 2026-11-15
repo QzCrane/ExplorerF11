@@ -554,7 +554,7 @@ static HICON LoadTrayIcon() {
     return LoadIconW(NULL, IDI_APPLICATION);
 }
 
-static std::wstring BuildTrayTip();   // defined below, needs the live window count
+static std::wstring BuildTrayTip();   // defined below, needs the live state text
 
 static void AddTray(HWND h) {
     if (!g_icon) LoadTrayIcon();   // once; also survives an explorer restart
@@ -619,18 +619,12 @@ static void RemoveTray(HWND h) {
     Shell_NotifyIconW(NIM_DELETE, &nid);
 }
 
-struct CountCtx { int marked; };
-
-static BOOL CALLBACK EnumCountProc(HWND h, LPARAM lp) {
-    CountCtx *c = (CountCtx *)lp;
-    if (IsExplorerWindow(h) && IsMarked(h)) ++(c->marked);
-    return TRUE;
-}
-
-static int CountAccelerated() {
-    CountCtx c = {0};
-    EnumWindows(EnumCountProc, (LPARAM)&c);
-    return c.marked;
+// The one definition of the live state. The tooltip and the menu header both
+// call it, and the count itself lives in footprint.cpp, so the three surfaces
+// that show "how many" cannot drift apart.
+static std::wstring LiveStateText() {
+    if (g_paused) return T(L"已暂停加速", L"paused");
+    return AcceleratedText(MarkedWindows());
 }
 
 // Name, version and live state in two short lines - the tray tooltip is the
@@ -638,20 +632,7 @@ static int CountAccelerated() {
 static std::wstring BuildTrayTip() {
     std::wstring s = L"ExplorerF11 " EF11_VERSION;
     s += L"\n";
-    if (g_paused) {
-        s += T(L"已暂停加速", L"paused");
-        return s;
-    }
-    int n = CountAccelerated();
-    if (n == 1) {
-        s += T(L"已加速 1 个窗口", L"1 window accelerated");
-    } else if (n > 1) {
-        wchar_t b[64];
-        swprintf_s(b, T(L"已加速 %d 个窗口", L"%d windows accelerated"), n);
-        s += b;
-    } else {
-        s += T(L"运行中，等待新的文件夹窗口", L"running, waiting for windows");
-    }
+    s += LiveStateText();
     return s;
 }
 
@@ -694,21 +675,7 @@ static HMENU BuildTrayMenu() {
 
     // Header: name + version + live state, so "is it working / is it paused"
     // needs no click and no memory.
-    std::wstring state;
-    if (g_paused) {
-        state = T(L"已暂停加速", L"paused");
-    } else {
-        int n = CountAccelerated();
-        if (n == 1) {
-            state = T(L"已加速 1 个窗口", L"1 window accelerated");
-        } else if (n > 1) {
-            wchar_t b[64];
-            swprintf_s(b, T(L"已加速 %d 个窗口", L"%d windows accelerated"), n);
-            state = b;
-        } else {
-            state = T(L"运行中，等待新的文件夹窗口", L"running, waiting for windows");
-        }
-    }
+    std::wstring state = LiveStateText();
     std::wstring head = L"ExplorerF11 " EF11_VERSION L"  \u00B7  " + state;
     AppendMenuW(m, MF_STRING | MF_GRAYED, 0, head.c_str());
 
@@ -739,8 +706,8 @@ static HMENU BuildTrayMenu() {
 
     // --- settings: ticked = on, no ellipsis, no verb --------------------
     AppendMenuW(m, MF_STRING | (g_tabs ? MF_CHECKED : MF_UNCHECKED),
-                IDM_TABS, T(L"\u65B0\u6807\u7B7E\u9875\u4E5F\u52A0\u901F",
-                            L"Accelerate new tabs"));
+                IDM_TABS, T(L"\u65B0\u5EFA\u9009\u9879\u5361\u65F6\u91CD\u65B0\u52A0\u901F\u7A97\u53E3",
+                            L"Re-accelerate the window on new tabs"));
     AppendMenuW(m, MF_STRING | (g_initial ? MF_CHECKED : MF_UNCHECKED),
                 IDM_INITIAL,
                 T(L"\u542F\u52A8\u65F6\u5904\u7406\u5DF2\u6253\u5F00\u7684\u7A97\u53E3",
@@ -1158,6 +1125,9 @@ static std::wstring UsageText() {
         L"      开机自启或切换界面语言时才会写入，改回默认即删除。--status 列出\n"
         L"      全部可能位置（含 Windows 自动记录的那些），--clean 清零。程序本体\n"
         L"      不算痕迹，要彻底卸载请自行删除 ExplorerF11.exe。\n\n"
+        L"单位：加速以窗口为单位，不以选项卡为单位 —— F11 由窗口框架处理，一次往返对\n"
+        L"      该窗口内的全部选项卡同时生效，选项卡不会单独加速。状态行括号里是这些\n"
+        L"      窗口当前包含的选项卡数。\n\n"
         L"示例：\n"
         L"  ExplorerF11.exe --install              安装，并在登录时启动\n"
         L"  ExplorerF11.exe --status --lang en     用英文核对足迹\n"
@@ -1171,6 +1141,10 @@ static std::wstring UsageText() {
         L"      deletes it. --status lists every possible location (including the ones\n"
         L"      Windows records on its own), --clean zeroes them. The exe is not a trace:\n"
         L"      delete ExplorerF11.exe yourself for a full uninstall.\n\n"
+        L"Unit: acceleration is counted in windows, not in tabs - F11 is handled by the\n"
+        L"      window frame, so one round trip covers every tab in that window at once,\n"
+        L"      and a tab is never accelerated on its own. The bracketed figure is how many\n"
+        L"      tabs those windows currently hold.\n\n"
         L"Examples:\n"
         L"  ExplorerF11.exe --install              install, and start at logon\n"
         L"  ExplorerF11.exe --status --lang en     check the footprint in English\n"

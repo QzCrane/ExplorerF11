@@ -94,8 +94,24 @@ std::wstring BuildFootprintReport(int *places = nullptr, DWORD *bytes = nullptr)
 // deliberately not touched.
 CleanReport CleanAll();
 
-// Folder windows currently carrying our acceleration mark. In-memory only.
-int MarkedWindowCount();
+// Live state of the acceleration marks. In-memory only: nothing here touches
+// disk, and everything disappears with the explorer process.
+//
+// The unit is the WINDOW, not the tab: F11 is handled by the window frame, so
+// one round trip covers every tab in that window at once. `tabs` is the number
+// of tabs those marked windows currently hold - it describes their contents,
+// not a second thing that was accelerated separately.
+struct WindowMarks {
+    int windows = 0;
+    int tabs    = 0;
+};
+
+WindowMarks MarkedWindows();
+
+// "已加速 1 个窗口（含 2 个选项卡）" / "1 window accelerated (2 tabs)".
+// The single source of this sentence: the tooltip, the menu header and the
+// footprint report all call it, so the three can never disagree.
+std::wstring AcceleratedText(const WindowMarks &m);
 
 }  // namespace ef11
 

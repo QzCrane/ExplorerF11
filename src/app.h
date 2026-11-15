@@ -7,7 +7,7 @@
 
 #include <windows.h>
 
-#define EF11_VERSION      L"6.1.0"
+#define EF11_VERSION      L"6.1.1"
 
 namespace ef11 {
 
