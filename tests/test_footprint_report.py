@@ -79,6 +79,22 @@ def hwnd(cls):
     return u.FindWindowW(cls, None)
 
 
+def confirm_box():
+    """The modal confirmation, if one is on screen: class #32770, visible."""
+    found = []
+
+    @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    def cb(h, _lp):
+        cls = ctypes.create_unicode_buffer(64)
+        u.GetClassNameW(h, cls, 64)
+        if cls.value == "#32770" and u.IsWindowVisible(h):
+            found.append(h)
+        return True
+
+    u.EnumWindows(cb, 0)
+    return found[0] if found else None
+
+
 def window_text(h):
     buf = ctypes.create_unicode_buffer(512)
     u.GetWindowTextW(h, buf, 512)
@@ -228,24 +244,27 @@ for line in out.strip().splitlines()[:6]:
 clean = "结论：干净" in out
 check("退出码与结论一致", code, 0 if clean else 1)
 
-print("\n==== 2. 结构：4 段、14 项、字段齐全 ====")
+print("\n==== 2. 结构：3 段、11 项、字段齐全 ====")
 sections = [l for l in out.splitlines() if l.startswith("── ")]
-check("四段标题", len(sections), 4)
-check("条目总数", len(items(out)), 14)
+check("三段标题", len(sections), 3)
+check("条目总数", len(items(out)), 11)
 check_true("每段编号都从 1 开始",
-           [l.split("]")[0] + "]" for l in items(out)].count("[1]") == 4,
+           [l.split("]")[0] + "]" for l in items(out)].count("[1]") == 3,
            str([l.split("]")[0] + "]" for l in items(out)].count("[1]")))
 check_true("报告说明检查范围",
-           any(l.startswith("范围：") and "14" in l for l in out.splitlines()),
+           any(l.startswith("范围：") and "11" in l and "3 组" in l
+               for l in out.splitlines()),
            " ".join(l for l in out.splitlines() if l.startswith("范围：")))
-check("谁写：行数 = 条目数", out.count("谁写："), 14)
-check("位置：行数 = 条目数", out.count("位置："), 14)
-check("说明：行数 = 条目数", out.count("说明："), 14)
+check("谁写：行数 = 条目数", out.count("谁写："), 11)
+check("位置：行数 = 条目数", out.count("位置："), 11)
+check("说明：行数 = 条目数", out.count("说明："), 11)
 check_true("程序本体注明不是痕迹", "不是痕迹" in out or "干净" in out)
 check_true("Windows 记录单独成段并解释来源",
            "── 二、Windows 自动记录" in out and "这是系统行为" in out, "")
 check_true("可清理标记存在", "· 可清理" in out or clean)
 check_true("报告声明只读", "本报告只读" in out)
+check_true("报告里没有旧版本残留条目",
+           "旧版本" not in out and "Ultra" not in out and "v4" not in out, "")
 check_true("结论含总数与分组", ("需要清理" in out and "Windows 自动记录" in out) or clean)
 
 # 窗口标记是唯一一处「数字带单位」的条目。有已加速窗口时，它必须按窗口计数
@@ -269,8 +288,8 @@ check("英文版条目数一致", len(items(en)), len(items(out)))
 check("英文版段数一致",
       len([l for l in en.splitlines() if l.startswith("-- ")]),
       len(sections))
-check("英文版谁写行数一致", en.count("who:    "), 14)
-check("英文版说明行数一致", en.count("note:   "), 14)
+check("英文版谁写行数一致", en.count("who:    "), 11)
+check("英文版说明行数一致", en.count("note:   "), 11)
 check_true("英文版没有中文字符",
            not any("\u4e00" <= ch <= "\u9fff" for ch in en))
 check_true("英文版标题正确", en.startswith("ExplorerF11 "), en.splitlines()[0])
@@ -330,14 +349,43 @@ if win:
     check_true("按钮已回到中文（复制全部）", dlg_text(win, 2002) == "复制全部",
                dlg_text(win, 2002))
 
-    print("\n==== 7. 清理按钮（仅在本来就干净时执行）====")
-    if clean:
-        u.PostMessageW(win, 0x0111, IDC_STATUS_CLEAN, 0)
-        time.sleep(1.0)
-        check_true("面板仍然干净", "结论：干净" in read_edit(win))
-        check_true("标题说明本来就干净", "干净" in window_text(win), window_text(win))
-    else:
-        print("      （当前有痕迹，跳过清理按钮：测试不替用户删东西）")
+    print("\n==== 7. 报告窗口是唯一的清理入口，而且会二次确认 ====")
+    check_true("窗口里有清理按钮", bool(u.GetDlgItem(win, IDC_STATUS_CLEAN)),
+               str(u.GetDlgItem(win, IDC_STATUS_CLEAN)))
+    check_true("按钮写明会先问（带省略号）",
+               (dlg_text(win, IDC_STATUS_CLEAN) or "").endswith("…"),
+               str(dlg_text(win, IDC_STATUS_CLEAN)))
+    menu_zh = subprocess.run([EXE, "--menu", "--lang", "zh"],
+                             capture_output=True, timeout=20).stdout.decode("utf-8", "replace")
+    check_true("托盘菜单里没有第二个清理入口", "清除" not in menu_zh, "")
+
+    before_state = state()
+    u.PostMessageW(win, 0x0111, IDC_STATUS_CLEAN, 0)   # click the clean button
+    dlg = None
+    for _ in range(30):
+        time.sleep(0.1)
+        dlg = confirm_box()
+        if dlg:
+            break
+    check_true("清理前弹出确认框", bool(dlg), str(dlg))
+    if dlg:
+        u.PostMessageW(dlg, 0x0111, 7, 0)   # IDNO = cancel
+        time.sleep(0.8)
+        check_true("取消后什么都没删", state() == before_state, str(state()))
+        check_true("取消后报告窗口还在", bool(hwnd("ExplorerF11StatusWindow")), "")
+
+    print("\n==== 8. 已打开的报告跟随状态实时刷新 ====")
+    before_body = read_edit(win)
+    u.PostMessageW(hwnd("ExplorerF11Window"), 0x0111, 1002, 0)   # IDM_PAUSE
+    time.sleep(1.2)
+    after_body = read_edit(win)
+    check_true("暂停后窗口内容当场重建", after_body != before_body,
+               "%d -> %d bytes" % (len(before_body), len(after_body)))
+    check_true("重建后仍是同一份报告", after_body.startswith("ExplorerF11 ") and
+               after_body.count("谁写：") == before_body.count("谁写："), "")
+    u.PostMessageW(hwnd("ExplorerF11Window"), 0x0111, 1002, 0)   # IDM_PAUSE (resume)
+    time.sleep(1.2)
+    check_true("恢复后再次重建", read_edit(win) != after_body, "")
 
     u.PostMessageW(win, 0x0010, 0, 0)   # WM_CLOSE
     time.sleep(0.5)

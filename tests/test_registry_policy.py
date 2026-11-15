@@ -19,7 +19,6 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 EXE = os.path.join(ROOT, "dist", "ExplorerF11.exe")
 CFG = r"Software\ExplorerF11"
-OLD_CFG = r"Software\ExplorerF11Ultra"
 RUN = r"Software\Microsoft\Windows\CurrentVersion\Run"
 APPROVED = r"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run"
 TRAY = r"Control Panel\NotifyIconSettings"
@@ -119,9 +118,7 @@ def our_tray_entries():
 def dump_state():
     return {
         "cfg": key_exists(CFG),
-        "oldcfg": key_exists(OLD_CFG),
         "run": val(RUN, "ExplorerF11") is not None,
-        "oldrun": val(RUN, "ExplorerF11Ultra") is not None,
         "approved": val(APPROVED, "ExplorerF11") is not None,
         "tray": our_tray_entries(),
     }
@@ -144,27 +141,20 @@ try:
 except OSError:
     pass
 
-print("\n==== 0. 准备：造出 v4 遗留物（旧键 + 旧自启项）====")
+print("\n==== 0. 准备：从干净状态开始 ====")
 kill()
-with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, OLD_CFG, 0, winreg.KEY_SET_VALUE) as k:
-    winreg.SetValueEx(k, "Tabs", 0, winreg.REG_DWORD, 1)
-    winreg.SetValueEx(k, "InitialSweep", 0, winreg.REG_DWORD, 1)
-with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN, 0, winreg.KEY_SET_VALUE) as k:
-    winreg.SetValueEx(k, "ExplorerF11Ultra", 0, winreg.REG_SZ,
-                      r'"C:\old\ExplorerF11Ultra.exe"')
-print("  planted:", dump_state())
+run_exe("--clean", "--quiet")
+before = dump_state()
+print("      baseline:", before)
 
-print("\n==== 1. 首次启动应自动迁移旧名（旧键消失、自启项改指新 exe）====")
+print("\n==== 1. 默认启动：注册表零写入 ====")
 start()
 st = dump_state()
-check("旧配置键已删除", st["oldcfg"], False)
-check("旧自启项已删除", st["oldrun"], False)
-check("自启项已改指新 exe",
-      bool(val(RUN, "ExplorerF11") or ""), True)
-if val(RUN, "ExplorerF11"):
-    print("      value =", val(RUN, "ExplorerF11"))
 check("默认值不落盘（无配置键）", st["cfg"], False)
+check("不写自启项", st["run"], False)
+check("启动后状态与启动前一致", st, before)
 kill()
+
 print("\n==== 2. 默认启动：注册表零写入 ====")
 kill()
 run_exe("--clean", "--quiet")          # 从干净状态开始，否则上一步迁移出的自启项还在
@@ -213,7 +203,7 @@ check("取消自启后 Run 值消失", val(RUN, "ExplorerF11") is None, True)
 check("取消自启后 StartupApproved 也不留", val(APPROVED, "ExplorerF11") is None, True)
 kill()
 
-print("\n==== 4. --clean 清空一切（含旧名与托盘记录）====")
+print("\n==== 4. --clean 清空一切（含托盘记录）====")
 with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, CFG, 0, winreg.KEY_SET_VALUE) as k:
     winreg.SetValueEx(k, "Tabs", 0, winreg.REG_DWORD, 0)
 with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN, 0, winreg.KEY_SET_VALUE) as k:
@@ -221,16 +211,11 @@ with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN, 0, winreg.KEY_SET_VALUE) as k
 with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, APPROVED, 0, winreg.KEY_SET_VALUE) as k:
     winreg.SetValueEx(k, "ExplorerF11", 0, winreg.REG_BINARY,
                       b"\x03\x00\x00\x00" + b"\x00" * 8)
-with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, OLD_CFG, 0, winreg.KEY_SET_VALUE) as k:
-    winreg.SetValueEx(k, "Tabs", 0, winreg.REG_DWORD, 0)
-print("  planted:", dump_state())
 
 run_exe("--clean", "--quiet")
 st = dump_state()
 check("配置键已清除", st["cfg"], False)
-check("旧配置键已清除", st["oldcfg"], False)
 check("自启项已清除", st["run"], False)
-check("旧自启项已清除", st["oldrun"], False)
 check("启动开关记录已清除", st["approved"], False)
 check("托盘图标记录已清除", st["tray"], 0)
 

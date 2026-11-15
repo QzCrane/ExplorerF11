@@ -48,7 +48,7 @@ If you move it after enabling autostart, tick the item again.
 Fixed five-part layout, top to bottom:
 
 ```
-ExplorerF11 6.1.1  ·  3 windows accelerated (5 tabs)   <- grey, not clickable
+ExplorerF11 6.2.0  ·  3 windows accelerated (5 tabs)   <- grey, not clickable
 ────────────────────────────
 Apply to all open windows
 Apply to the active window
@@ -60,7 +60,6 @@ Pause acceleration
 Language  ▸  中文（简体） / English
 ────────────────────────────
 Footprint report (2 items)…
-Clear all traces and exit…
 ────────────────────────────
 Exit
 ```
@@ -75,8 +74,7 @@ Exit
 | Accelerate windows open at start-up | On by default. Off means only windows created later are handled |
 | Start with Windows | The tick reflects what will actually happen, even after a Task Manager disable |
 | Language | Submenu with two radio rows: **中文（简体）** and **English**. Applies immediately and is remembered |
-| Footprint report | Opens the read-only inventory |
-| Clear all traces and exit | Confirms, removes everything removable, exits |
+| Footprint report | Opens the inventory. The report is read-only; the only action that deletes is *Clean up…* inside it, and it asks first |
 
 *Clear* is deliberately not adjacent to *Exit*: one separator and a trailing `…`
 in between. A misclick there costs a reinstall.
@@ -110,20 +108,20 @@ nothing to translate in your head.
 saying where the numbers come from:
 
 ```
-ExplorerF11 6.1.1 - footprint report
+ExplorerF11 6.2.0 - footprint report
 program: D:\Tools\ExplorerF11.exe
 time:    2026-11-15 11:20:31 (local) - UI language: English
-scope:   14 possible locations in 4 groups; each one is checked below, including
+scope:   11 possible locations in 3 groups; each one is checked below, including
          the ones that are absent.
 ================================================================
 
 Verdict: 2 items to remove, 372 B in total.
-      this program: 1 item (164 B); recorded by Windows: 1 item (208 B); legacy: 0 items.
-      Items marked "removable" are deleted by "clear all traces and exit"; the exe is not.
+      this program: 1 item (164 B); recorded by Windows: 1 item (208 B).
+      Items marked "removable" are deleted by "Clean up…" in this window; the exe is not.
 ```
 
-Then four groups — written by this program, recorded by Windows, legacy leftovers,
-program file — and per item four fields:
+Then three groups — written by this program, recorded by Windows, program file —
+and per item four fields:
 
 ```
 [2] Autostart entry - present - removable
@@ -143,9 +141,19 @@ program file — and per item four fields:
 Absent locations are listed too, marked *absent*: a report that only shows dirt
 cannot prove that the rest is clean.
 
-Three buttons: **Copy all / Clean up / Close**. Cleaning refreshes the list in
-place and retitles the window to *cleaned* or *already clean*. Switching language
-while it is open changes the title, the buttons and the body together.
+Three buttons: **Copy all / Clean up… / Close**.
+
+- **Clean up…** is the only place in the program that deletes anything; the tray
+  menu deliberately has no second copy. It asks first, listing each category it is
+  about to remove. Answer *No* and nothing changes. On *Yes* the list refreshes in
+  place and **the tool keeps running**, so you can check the result.
+- **The report updates itself.** While the window is open, opening or closing
+  folder windows, pausing or resuming acceleration, or switching language rebuilds
+  the body immediately, keeping your scroll position. It never shows a count from
+  two minutes ago.
+- The title bar, taskbar and Alt+Tab carry the program's own icon. The tray glyph
+  is a blue bolt while running and grey while paused, and the hover tooltip states
+  the current state and window count.
 
 ## Command line
 
@@ -250,14 +258,14 @@ windows are not pushed around. The UI scales with the system DPI.
 **How do I uninstall?**
 Two steps: `ExplorerF11.exe --clean`, then delete the exe. `--clean` stops a
 running instance, then removes settings (language included), autostart, log,
-legacy leftovers, and the records Windows made for it (tray icon cache, startup
-flag, compatibility store, MuiCache, UserAssist, and Prefetch when elevated).
+and the records Windows made for it (tray icon cache, startup flag, compatibility
+store, MuiCache, UserAssist, and Prefetch when elevated).
 
 **Why is Prefetch still there after `--clean`?**
 `%WINDIR%\Prefetch` is administrator-only. Without elevation the entries cannot be
 deleted, and the report does not pretend otherwise.
 
 **Will it mess up my registry?**
-It touches only the 14 locations listed in [FOOTPRINTS.md](FOOTPRINTS.md), and
+It touches only the 11 locations listed in [FOOTPRINTS.md](FOOTPRINTS.md), and
 nothing else. When in doubt, run `--status`: that is the tool's own account of
 itself.

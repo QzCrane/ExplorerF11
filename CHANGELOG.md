@@ -2,6 +2,36 @@
 
 All notable changes to this project. Versions follow [SemVer](https://semver.org/).
 
+## 6.2.0 - 2026-11-15
+
+The release that makes the program look and behave like something installed
+rather than something compiled.
+
+### Added
+- **Real icons.** `src/app.rc` embeds a running icon, a paused icon and a version
+  block; `tools/make-icons.py` draws them from geometry. Nine frames each (16-256)
+  so the shell gets the pixel size it asks for at 100 %, 150 % and 200 % scaling.
+  Explorer, the taskbar, Alt+Tab and the report window finally show the product
+  mark instead of the generic blank document.
+- **The tray picture carries the state**: blue bolt while running, grey while
+  paused.
+- **Live report window**: opening or closing folder windows, pausing, resuming or
+  switching language rebuilds the body in place, keeping the scroll position.
+
+### Changed
+- **One clean entry, and it asks first.** The tray menu's "clear all traces and
+  exit" item and the report window's unconfirmed button were two different
+  behaviours for the same destructive act. The menu item is gone; the report's
+  **Clean up…** is the only place that deletes, it lists every category before
+  doing so, and it no longer quits afterwards - the list simply refreshes.
+- **Tooltip freshness**: `NOTIFYICON_VERSION_4` plus a push on every state change.
+  The hover text can no longer show a count from minutes ago.
+
+### Removed
+- The v4 `ExplorerF11Ultra` migration path and the three "legacy leftovers" rows
+  it fed. The report now covers 11 locations in three groups; nothing in it
+  describes a predecessor this program does not have.
+
 ## 6.1.1 - 2026-11-15
 
 Terminology fix. The status line said "N windows" while a user could see two tabs

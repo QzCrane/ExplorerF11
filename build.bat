@@ -26,7 +26,7 @@ exit /b 1
 
 :mingw
 echo [build] MinGW-w64 g++ (%MODE%)
-set SRC=src\main.cpp src\config.cpp src\footprint.cpp
+set SRC=src\main.cpp src\config.cpp src\footprint.cpp src\app.rc
 if /i "%MODE%"=="debug" (
     g++ -std=c++17 -O0 -g -municode -Wall -Wextra %SRC% -o dist\ExplorerF11.exe ^
         -luser32 -lshell32 -ladvapi32
@@ -42,11 +42,11 @@ goto done
 echo [build] MSVC cl (%MODE%)
 if /i "%MODE%"=="debug" (
     cl /nologo /std:c++17 /EHsc /W4 /Zi /Od /D_DEBUG ^
-       src\main.cpp src\config.cpp src\footprint.cpp ^
+       src\main.cpp src\config.cpp src\footprint.cpp src\app.rc ^
        /Fo:dist\ /Fe:dist\ExplorerF11.exe /link /SUBSYSTEM:CONSOLE
 ) else (
     cl /nologo /std:c++17 /EHsc /W4 /O2 /GL /DNDEBUG ^
-       src\main.cpp src\config.cpp src\footprint.cpp ^
+       src\main.cpp src\config.cpp src\footprint.cpp src\app.rc ^
        /Fo:dist\ /Fe:dist\ExplorerF11.exe /link /SUBSYSTEM:WINDOWS /LTCG
 )
 if errorlevel 1 exit /b 1

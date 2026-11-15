@@ -115,7 +115,6 @@ want = [
     "    [ ] English",
     "----",
     None,                            # 足迹报告 —— 括号里是项数
-    "[ ] 清除全部痕迹并退出…",
     "----",
     "[ ] 退出",
 ]
@@ -140,7 +139,7 @@ for i, w in enumerate(want):
         check("第 %d 行" % (i + 2), got, w)
 
 print("\n==== 3. 结构约束 ====")
-check("顶层分隔线 4 条", sum(1 for r in rest if r.strip() == "----"), 4)
+check("顶层分隔线 3 条", sum(1 for r in rest if r.strip() == "----"), 4)
 check_true("子菜单行缩进 4 格",
            all(r.startswith("    ") for r in rest if "中文（简体）" in r or r.strip() == "English"),
            "")
@@ -155,13 +154,16 @@ check_true("退出永远在最后一行", rest[-1] == "[ ] 退出", rest[-1])
 check_true("退出上一行是分隔线", len(rest) > 1 and rest[-2] == "----")
 fp_i = next(i for i, r in enumerate(rest) if r.startswith("[ ] 足迹报告（"))
 sep_i = next(i for i, r in enumerate(rest) if i > fp_i and r.strip() == "----")
-check("维护段 = 足迹 + 清除 + 分隔线",
-      [r.strip() for r in rest[fp_i + 1:sep_i + 1]],
-      ["[ ] 清除全部痕迹并退出…", "----"])
-check("清除之后紧跟退出", rest[sep_i + 1], "[ ] 退出")
-check_true("只有维护段带省略号",
+check("维护段 = 足迹 + 分隔线",
+      [r.strip() for r in rest[fp_i + 1:sep_i + 1]], ["----"])
+check("足迹报告之后紧跟退出", rest[sep_i + 1], "[ ] 退出")
+# One destructive action, one place. It lives inside the report window, where
+# the user can see what is about to be deleted; the menu keeps no second copy.
+check_true("菜单里没有第二个清理入口",
+           not any("清除" in r or "Clean" in r or "clean" in r for r in rest), "")
+check_true("只有足迹报告带省略号",
            all(r.strip().endswith("…") for r in rest if "…" in r) and
-           sum(1 for r in rest if "…" in r) == 2,
+           sum(1 for r in rest if "…" in r) == 1,
            "带 … 的行：%d" % sum(1 for r in rest if "…" in r))
 check_true("没有残留旧文案",
            not any("注册表足迹" in r or "Run at logon" in r or "新标签页" in r

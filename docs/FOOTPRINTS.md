@@ -3,7 +3,7 @@
 Everything this tool can leave on a machine, where it lives, who writes it, and
 how to remove it. `ExplorerF11.exe --status` prints the same list with live values.
 
-Four groups, fourteen items. **Nothing in the first three groups exists after a
+Three groups, eleven items. **Nothing in the first two groups exists after a
 fresh run with the default configuration** — the list is what *can* appear, not
 what does.
 
@@ -46,23 +46,11 @@ in the cleanup: deleting them is a courtesy, not an uninstall.
 Item 10 is only readable by administrators. Without elevation the report shows it
 as absent and `--clean` skips it silently — it cannot delete what it cannot open.
 
-## C. Legacy leftovers (v4 and earlier)
-
-| # | Item | Location | `--clean` |
-|---|---|---|---|
-| 11 | Old settings key | `HKCU\Software\ExplorerF11Ultra` | deleted |
-| 12 | Old autostart | `HKCU\...\Run\ExplorerF11Ultra` | deleted |
-| 13 | Old startup flag | `HKCU\...\StartupApproved\Run\ExplorerF11Ultra` | deleted |
-
-These exist only on machines that ran a pre-5.0 build, which used the product
-name *ExplorerF11Ultra*. 6.x migrates them on first start (the autostart entry is
-rewritten to point at the new exe), and `--clean` removes them.
-
-## D. The program file
+## C. The program file
 
 | # | Item | Location | Removed by |
 |---|---|---|---|
-| 14 | `ExplorerF11.exe` | wherever you put it | you, after `--clean` |
+| 11 | `ExplorerF11.exe` | wherever you put it | you, after `--clean` |
 
 Not residue. It is the program. Deleting it is the last step of an uninstall and
 is deliberately left to the user.
@@ -118,5 +106,7 @@ Remove-Item .\ExplorerF11.exe
 `--clean` also stops a running instance first, and prints a per-category report of
 what it removed. If a category is missing from that report, nothing of that kind
 was there.
-The tray window has the same button. It refreshes in place, so the report you are
+The report window carries the same action as its *Clean up…* button — the only
+place in the UI that deletes anything. It asks first, lists exactly what will go,
+then refreshes the report in place: the tool keeps running and the page you are
 reading turns into "clean" without reopening anything.

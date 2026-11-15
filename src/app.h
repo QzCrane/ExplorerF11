@@ -7,7 +7,7 @@
 
 #include <windows.h>
 
-#define EF11_VERSION      L"6.1.1"
+#define EF11_VERSION      L"6.2.0"
 
 namespace ef11 {
 
@@ -35,10 +35,6 @@ inline const wchar_t *TRAY_KEY       = L"Control Panel\\NotifyIconSettings";
 inline const wchar_t *COMPAT_KEY     = L"Software\\Microsoft\\Windows NT\\CurrentVersion\\AppCompatFlags\\Compatibility Assistant\\Store";
 inline const wchar_t *MUI_KEY        = L"Software\\Classes\\Local Settings\\Software\\Microsoft\\Windows\\Shell\\MuiCache";
 inline const wchar_t *USERASSIST_KEY = L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\UserAssist";
-
-// Leftovers from v4 and earlier (different product name)
-inline const wchar_t *OLD_RUN_VALUE  = L"ExplorerF11Ultra";
-inline const wchar_t *OLD_CFG_KEY    = L"Software\\ExplorerF11Ultra";
 
 // Value names inside CFG_KEY. Kept here so the footprint report and the writer
 // can never disagree about what a key may contain.

@@ -115,7 +115,42 @@ Measured with `test_smoke.py` on 26300.9974, one folder window open:
 | Handles | 148 | of which 1 is ours (the single-instance mutex); the rest are the window, hooks, tray icon and thread pool |
 | Threads | 4 → 1 | 3 are `TpWorkerFactory` helpers that exit after ~45 s idle |
 | CPU | 0 % | blocked in `GetMessageW` |
-| Disk | 294 KB | static CRT, `-Os`, stripped |
+| Disk | 333 KB | static CRT, `-Os`, stripped; 60 KB of it is the two multi-size icons |
+
+## Icons and resources
+
+`src/app.rc` carries two icons and the version block; `tools/make-icons.py`
+regenerates the icons from geometry, so they are reproducible rather than
+binary blobs of unknown origin.
+
+Both icons ship nine frames (16, 20, 24, 32, 40, 48, 64, 128, 256), because the
+shell asks for a different pixel size at every scaling level. The tray loads
+`SM_CXSMICON`, the report window `SM_CXICON` and `SM_CXSMICON`, so Windows
+picks a real frame instead of stretching one bitmap. The mark is a single-colour
+bolt on a transparent background, not a rounded tile: it has to sit next to the
+system's thin monochrome glyphs in the notification area.
+
+Without the resource, all four surfaces showed the generic blank document icon.
+`test_icons.py` asserts that the built exe contains both icons and that
+`FileVersion` matches `--version`, which is also what proves the `.rc` actually
+compiled on every build path.
+
+## Tray tooltip
+
+The tooltip is the only surface a user sees without opening anything, and the
+shell caches its text at `NIM_ADD` time. Two mechanisms keep it honest:
+
+1. **Push on change.** Every event that alters the count - window created,
+   window destroyed, restored from minimized, recovery timer, pause, apply,
+   apply-all, start-up sweep - funnels through `OnStateChanged()`, which refreshes
+   the tooltip, the tray picture and any open report in one call. There is no
+   code path that updates one surface and forgets another.
+2. **Refresh before display.** `NIM_SETVERSION` is set to `NOTIFYICON_VERSION_4`,
+   which delivers `NIN_POPUPOPEN` just before the shell draws the tooltip; the
+   handler rebuilds the text there. Even a tooltip that was cached minutes ago is
+   correct by the time it becomes visible.
+
+The popup also carries the state: blue bolt while running, grey bolt while paused.
 
 ## Settings
 
@@ -185,16 +220,17 @@ internals. Two consequences worth keeping:
 - `--menu` prints the menu that `BuildTrayMenu()` actually built — including
   submenus, as indented rows — so the layout test cannot drift from the UI.
 - every test that changes state restores it, including the autostart entry and
-  the stored language, and the clean-button test refuses to run on a machine that
-  has real traces.
+  the stored language. The clean test only ever answers *No* to the confirmation,
+  so it can run on a machine with real traces without deleting them.
 
-Six suites, each asserting and returning a non-zero exit code on failure:
+Seven suites, each asserting and returning a non-zero exit code on failure:
 
 | Suite | Proves |
 |---|---|
 | `test_menu_order.py` | exact rows, groups, ticks, language radio pair |
-| `test_footprint_report.py` | report truth, both languages, live relocalisation |
+| `test_footprint_report.py` | report truth, both languages, live refresh, single confirmed clean entry |
 | `test_registry_policy.py` | zero writes by default, defaults delete themselves |
+| `test_icons.py` | icons and version block in the exe, tooltip refresh contract |
 | `test_language.py` | resolution order, persistence, zero-write rule |
 | `test_tray_cleanup.py` | cleanup is surgical, other programs' entries survive |
 | `test_smoke.py` | real window accelerated, resource profile, clean exit |

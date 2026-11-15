@@ -58,6 +58,7 @@
 #include "config.h"
 #include "footprint.h"
 #include "i18n.h"
+#include "resource.h"
 
 using namespace ef11;
 
@@ -65,12 +66,29 @@ using namespace ef11;
 #ifdef _MSC_VER
 #pragma comment(lib, "user32.lib")       // windows, menus, the tray icon message
 #pragma comment(lib, "gdi32.lib")        // CreateFontW, GetStockObject, GetDeviceCaps
-#pragma comment(lib, "shell32.lib")      // Shell_NotifyIconW, SHGetStockIconInfo
+#pragma comment(lib, "shell32.lib")      // Shell_NotifyIconW
 #pragma comment(lib, "advapi32.lib")     // RegOpenKeyEx / RegSetValueEx
 #endif
 
 #ifndef HSHELL_RUDEAPPACTIVATED
 #define HSHELL_RUDEAPPACTIVATED 0x8004   // a fullscreen app took the activation
+#endif
+
+// NOTIFYICON_VERSION_4 and its notifications need Vista-era headers; the ones
+// in older SDKs still work, so only fill in what is missing.
+#ifndef NIF_SHOWTIP
+#define NIF_SHOWTIP 0x00000080
+#endif
+#ifndef NOTIFYICON_VERSION_4
+#define NOTIFYICON_VERSION_4 4
+#endif
+#ifndef NIN_POPUPOPEN
+#define NIN_POPUPOPEN  (WM_USER + 6)
+#define NIN_POPUPCLOSE (WM_USER + 7)
+#endif
+#ifndef NIN_SELECT
+#define NIN_SELECT     (WM_USER + 0)
+#define NIN_KEYSELECT  (WM_USER + 1)
 #endif
 
 static const UINT WM_TRAYICON    = WM_USER + 1;
@@ -81,7 +99,6 @@ static const UINT IDM_AUTOSTART  = 1005;
 static const UINT IDM_EXIT       = 1006;
 static const UINT IDM_TABS       = 1007;
 static const UINT IDM_INITIAL    = 1008;
-static const UINT IDM_CLEAN      = 1009;
 static const UINT IDM_STATUS     = 1010;
 static const UINT IDM_LANG_ZH    = 1011;
 static const UINT IDM_LANG_EN    = 1012;
@@ -105,10 +122,22 @@ static bool  g_initial           = DEF_INITIAL;
 static HWND  g_hwnd              = NULL;
 static HWND  g_risk              = NULL;
 static HWND  g_lastFolder        = NULL;   // last folder window that got activated
-static HICON g_icon              = NULL;
+// Icons are loaded from our own resources at the size the shell asks for, and
+// kept for the life of the process so the tray can re-use them after an
+// Explorer restart. They are ours, so WM_DESTROY destroys them.
+static HICON g_iconOn            = NULL;   // tray, running
+static HICON g_iconPaused        = NULL;   // tray, paused
+static HICON g_iconBig           = NULL;   // report window, Alt+Tab
+static HICON g_iconSmall         = NULL;   // report window, title bar
 static HANDLE g_mux              = NULL;
 static HWINEVENTHOOK g_winEvent  = NULL;
 static HWINEVENTHOOK g_winEvent2 = NULL;
+
+static HICON LoadAppIcon(bool paused, bool small);   // defined with the tray code
+
+// Everything that shows live state - tooltip, tray picture, open report - is
+// refreshed through this one call, so a change cannot reach one and miss another.
+static void OnStateChanged();
 
 // ---------------------------------------------------------------- logging
 
@@ -192,8 +221,6 @@ static void ShowCleanReport(const CleanReport &r) {
                               L"launch counter (UserAssist)"), r.userAssist);
         AppendCleanLine(&s, T(L"\u9884\u8BFB\u53D6\u8BB0\u5F55\uFF08Prefetch\uFF09",
                               L"Prefetch entry"), r.prefetch);
-        AppendCleanLine(&s, T(L"\u65E7\u7248\u672C\u6B8B\u7559\uFF08ExplorerF11Ultra\uFF09",
-                              L"legacy leftovers (ExplorerF11Ultra)"), r.legacy);
         s += T(L"\n\u7A0B\u5E8F\u672C\u4F53\u4FDD\u7559\u5728\u539F\u5904\uFF1B\u8981\u5F7B\u5E95\u5378\u8F7D\uFF0C"
                L"\u518D\u628A ExplorerF11.exe \u5220\u6389\u5373\u53EF\u3002",
                L"\nThe exe stays where it is; delete ExplorerF11.exe as well for a full uninstall.");
@@ -218,9 +245,55 @@ static std::wstring ToCrlf(const std::wstring &s) {
     return r;
 }
 
+// Rebuild the body in place. The scroll offset is restored afterwards: the
+// report refreshes while the user is reading it, and jumping back to the top on
+// every new folder window would make the window unusable.
 static void RefreshStatus(HWND h) {
-    std::wstring t = ToCrlf(BuildFootprintReport(NULL, NULL));
-    SetDlgItemTextW(h, IDC_STATUS_TEXT, t.c_str());
+    HWND e = GetDlgItem(h, IDC_STATUS_TEXT);
+    int top = e ? (int)SendMessageW(e, EM_GETFIRSTVISIBLELINE, 0, 0) : 0;
+    SetDlgItemTextW(h, IDC_STATUS_TEXT, ToCrlf(BuildFootprintReport(NULL, NULL)).c_str());
+    if (e && top > 0) SendMessageW(e, EM_LINESCROLL, 0, top);
+}
+
+// Any change in what the tool has done must reach an open report immediately;
+// a window that shows a snapshot from two minutes ago is worse than no window.
+static void RefreshStatusIfOpen() {
+    if (g_status && IsWindow(g_status)) RefreshStatus(g_status);
+}
+
+// The one destructive action in the program, and the report window is its only
+// entry point. The tray menu used to carry a second "clear all traces and exit"
+// item that asked for confirmation and then quit, leaving the user staring at a
+// window that had just vanished. Cleaning happens in place now: confirm, clean,
+// refresh the report, keep running.
+static void RunClean(HWND owner) {
+    std::wstring q = T(
+        L"将删除本程序留下的全部可清理痕迹：\n\n"
+        L"  · 设置键 HKCU\\Software\\ExplorerF11\n"
+        L"  · 开机自启项，以及任务管理器为它记的启动开关\n"
+        L"  · 日志文件\n"
+        L"  · Windows 为它记的托盘图标、兼容性、应用名、启动次数与预读取条目\n\n"
+        L"程序本体不会被删除，本程序继续运行；下次启动回到全部默认设置。\n"
+        L"确定继续？",
+        L"Every removable trace of this program will be deleted:\n\n"
+        L"  - settings key HKCU\\Software\\ExplorerF11\n"
+        L"  - the autostart entry and the startup flag Task Manager kept for it\n"
+        L"  - the log file\n"
+        L"  - the tray icon, compatibility, friendly-name, launch-count and "
+        L"Prefetch records Windows kept for it\n\n"
+        L"The exe is not deleted and the tool keeps running; the next start is back "
+        L"to defaults.\nContinue?");
+    // Owned by the report window, so the question cannot end up behind it.
+    int answer = g_quiet ? IDYES
+                         : MessageBoxW(owner, q.c_str(), APP_NAME,
+                                       MB_ICONQUESTION | MB_YESNO);
+    if (answer != IDYES) return;
+
+    CleanReport rep = CleanAll();
+    Log(L"traces cleaned from the report window");
+    RefreshStatusIfOpen();
+    ShowCleanReport(rep);   // says exactly what went, including partial results
+    OnStateChanged();
 }
 
 // The UI font that actually ships with the UI language. Segoe UI has no CJK
@@ -235,7 +308,7 @@ static void RelocalizeStatus(HWND h) {
     SetWindowTextW(h, T(L"ExplorerF11 \u00B7 \u8DB3\u8FF9\u62A5\u544A",
                         L"ExplorerF11 \u00B7 footprint report"));
     SetDlgItemTextW(h, IDC_STATUS_COPY,  T(L"\u590D\u5236\u5168\u90E8", L"Copy all"));
-    SetDlgItemTextW(h, IDC_STATUS_CLEAN, T(L"\u6E05\u7406\u75D5\u8FF9", L"Clean up"));
+    SetDlgItemTextW(h, IDC_STATUS_CLEAN, T(L"\u6E05\u7406\u75D5\u8FF9\u2026", L"Clean up\u2026"));
     SetDlgItemTextW(h, IDC_STATUS_CLOSE, T(L"\u5173\u95ED", L"Close"));
     RefreshStatus(h);
     InvalidateRect(h, NULL, TRUE);
@@ -295,7 +368,7 @@ static LRESULT CALLBACK StatusProc(HWND h, UINT msg, WPARAM wParam, LPARAM lPara
         CreateWindowExW(0, L"BUTTON", T(L"复制全部", L"Copy all"),
                         WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
                         0, 0, 10, 10, h, (HMENU)(UINT_PTR)IDC_STATUS_COPY, inst, NULL);
-        CreateWindowExW(0, L"BUTTON", T(L"清理痕迹", L"Clean up"),
+        CreateWindowExW(0, L"BUTTON", T(L"清理痕迹…", L"Clean up…"),
                         WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
                         0, 0, 10, 10, h, (HMENU)(UINT_PTR)IDC_STATUS_CLEAN, inst, NULL);
         CreateWindowExW(0, L"BUTTON", T(L"关闭", L"Close"),
@@ -306,6 +379,13 @@ static LRESULT CALLBACK StatusProc(HWND h, UINT msg, WPARAM wParam, LPARAM lPara
         SendDlgItemMessageW(h, IDC_STATUS_COPY,  WM_SETFONT, (WPARAM)ui, TRUE);
         SendDlgItemMessageW(h, IDC_STATUS_CLEAN, WM_SETFONT, (WPARAM)ui, TRUE);
         SendDlgItemMessageW(h, IDC_STATUS_CLOSE, WM_SETFONT, (WPARAM)ui, TRUE);
+
+        // Title-bar and Alt+Tab icon: without these the window shows the
+        // generic application icon even though the exe carries ours.
+        if (!g_iconBig)   g_iconBig   = LoadAppIcon(false, false);
+        if (!g_iconSmall) g_iconSmall = LoadAppIcon(false, true);
+        SendMessageW(h, WM_SETICON, ICON_BIG,   (LPARAM)g_iconBig);
+        SendMessageW(h, WM_SETICON, ICON_SMALL, (LPARAM)g_iconSmall);
 
         RefreshStatus(h);
         return 0;
@@ -327,18 +407,9 @@ static LRESULT CALLBACK StatusProc(HWND h, UINT msg, WPARAM wParam, LPARAM lPara
         case IDC_STATUS_COPY:
             CopyToClipboard(h, ToCrlf(BuildFootprintReport(NULL, NULL)));
             break;
-        case IDC_STATUS_CLEAN: {
-            // The list refreshes in place, which is clearer feedback than a
-            // second dialog on top of the report the user is already reading.
-            CleanReport rep = CleanAll();
-            RefreshStatus(h);
-            SetWindowTextW(h, rep.Any()
-                ? T(L"ExplorerF11 · 足迹报告（已清理）",
-                    L"ExplorerF11 · footprint report (cleaned)")
-                : T(L"ExplorerF11 · 足迹报告（本来就干净）",
-                    L"ExplorerF11 · footprint report (already clean)"));
+        case IDC_STATUS_CLEAN:
+            RunClean(h);     // confirms first; never returns without an answer
             break;
-        }
         case IDC_STATUS_CLOSE:
             DestroyWindow(h);
             break;
@@ -364,13 +435,19 @@ static void ShowStatusWindow(HWND owner) {
         return;
     }
     HINSTANCE inst = GetModuleHandleW(NULL);
-    WNDCLASSW wc = {};
+    if (!g_iconBig)   g_iconBig   = LoadAppIcon(false, false);
+    if (!g_iconSmall) g_iconSmall = LoadAppIcon(false, true);
+
+    WNDCLASSEXW wc = {};
+    wc.cbSize        = sizeof(wc);
     wc.lpfnWndProc   = StatusProc;
     wc.hInstance     = inst;
     wc.lpszClassName = STATUS_CLASS;
     wc.hCursor       = LoadCursorW(NULL, IDC_ARROW);
     wc.hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1);
-    RegisterClassW(&wc);   // harmless if it already exists
+    wc.hIcon         = g_iconBig;     // taskbar + Alt+Tab
+    wc.hIconSm       = g_iconSmall;   // title bar
+    RegisterClassExW(&wc);   // harmless if it already exists
 
     UINT dpi = 96;
     HDC dc = GetDC(NULL);
@@ -401,36 +478,6 @@ static void ShowStatusWindow(HWND owner) {
     if (!g_status) return;
     ShowWindow(g_status, SW_SHOW);
     SetForegroundWindow(g_status);
-}
-
-// v4 wrote defaults into HKCU\Software\ExplorerF11Ultra and registered autostart
-// under the old exe name. Both would be orphaned by the rename, so move them.
-static void MigrateOldName() {
-    bool hadAutostart = DeleteRunValue(OLD_RUN_VALUE);
-    DeleteApproved(OLD_RUN_VALUE);   // its Windows flag would be orphaned too
-
-    HKEY k;
-    if (RegOpenKeyExW(HKEY_CURRENT_USER, OLD_CFG_KEY, 0, KEY_QUERY_VALUE, &k) == ERROR_SUCCESS) {
-        bool hasTabs = false, hasInit = false;
-        bool tabs = DEF_TABS, init = DEF_INITIAL;
-        DWORD v = 0, cb = sizeof(v), type = 0;
-        if (RegQueryValueExW(k, CFG_TABS, NULL, &type, (BYTE *)&v, &cb) == ERROR_SUCCESS
-            && type == REG_DWORD) {
-            hasTabs = true; tabs = v != 0;
-        }
-        cb = sizeof(v); type = 0;
-        if (RegQueryValueExW(k, CFG_INITIAL, NULL, &type, (BYTE *)&v, &cb) == ERROR_SUCCESS
-            && type == REG_DWORD) {
-            hasInit = true; init = v != 0;
-        }
-        RegCloseKey(k);
-
-        if (hasTabs) CfgWrite(CFG_TABS, tabs, DEF_TABS);
-        if (hasInit) CfgWrite(CFG_INITIAL, init, DEF_INITIAL);
-        RegDeleteKeyW(HKEY_CURRENT_USER, OLD_CFG_KEY);
-    }
-
-    if (hadAutostart) SetAutostart(true);   // repoint at the renamed exe
 }
 
 // ---------------------------------------------------------------- filters
@@ -528,7 +575,10 @@ static void CALLBACK WinEventProc(HWINEVENTHOOK, DWORD event, HWND hwnd,
     if (now - last < 1200) return;
 
     if (g_paused || !g_tabs) return;
-    if (Accelerate(parent, true)) Log(L"new tab: re-accelerated parent window");
+    if (Accelerate(parent, true)) {
+        Log(L"new tab: re-accelerated parent window");
+        OnStateChanged();   // the tab count in brackets went up
+    }
 }
 
 // A window minimized when the tool started is skipped by the start-up sweep
@@ -539,37 +589,66 @@ static void CALLBACK RestoreProc(HWINEVENTHOOK, DWORD event, HWND hwnd,
         return;
     if (!hwnd || g_paused || IsMarked(hwnd)) return;
     if (!IsExplorerWindow(hwnd)) return;
-    if (Accelerate(hwnd, false)) Log(L"restored from minimized: accelerated");
+    if (Accelerate(hwnd, false)) {
+        Log(L"restored from minimized: accelerated");
+        OnStateChanged();
+    }
 }
 
 // ---------------------------------------------------------------- tray
 
-static HICON LoadTrayIcon() {
-    SHSTOCKICONINFO sii = {};
-    sii.cbSize = sizeof(sii);
-    if (SUCCEEDED(SHGetStockIconInfo(SIID_FOLDER, SHGSI_ICON | SHGSI_SMALLICON, &sii))) {
-        g_icon = sii.hIcon;   // owned by us -> DestroyIcon on exit
-        return g_icon;
+// Icons come out of the exe's own resources (src/app.rc). Two things were wrong
+// before: the exe carried no icon at all, so Explorer, the taskbar and Alt+Tab
+// showed the generic blank document; and the tray borrowed the stock folder
+// icon, which is indistinguishable from any folder shortcut. Loading at exactly
+// SM_CXSMICON/SM_CXICON also means the shell gets the frame it wants instead of
+// stretching a 16 px bitmap on a scaled display.
+static HICON LoadAppIcon(bool paused, bool small) {
+    int cx = GetSystemMetrics(small ? SM_CXSMICON : SM_CXICON);
+    int cy = GetSystemMetrics(small ? SM_CYSMICON : SM_CYICON);
+    HICON h = (HICON)LoadImageW(GetModuleHandleW(NULL),
+                                MAKEINTRESOURCEW(paused ? IDI_APP_PAUSED : IDI_APP),
+                                IMAGE_ICON, cx, cy, LR_DEFAULTCOLOR);
+    // Only reachable if the resource failed to compile in; better a generic
+    // icon than an empty tray slot.
+    return h ? h : LoadIconW(NULL, IDI_APPLICATION);
+}
+
+static HICON TrayIconForState() {
+    if (g_paused) {
+        if (!g_iconPaused) g_iconPaused = LoadAppIcon(true, true);
+        return g_iconPaused;
     }
-    return LoadIconW(NULL, IDI_APPLICATION);
+    if (!g_iconOn) g_iconOn = LoadAppIcon(false, true);
+    return g_iconOn;
 }
 
 static std::wstring BuildTrayTip();   // defined below, needs the live state text
 
 static void AddTray(HWND h) {
-    if (!g_icon) LoadTrayIcon();   // once; also survives an explorer restart
     NOTIFYICONDATAW nid = {};
     nid.cbSize = sizeof(nid);
     nid.hWnd = h;
     nid.uID = TRAY_ID;
-    nid.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
+    nid.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP | NIF_SHOWTIP;
     nid.uCallbackMessage = WM_TRAYICON;
-    nid.hIcon = g_icon ? g_icon : LoadIconW(NULL, IDI_APPLICATION);
+    nid.hIcon = TrayIconForState();
     wcsncpy_s(nid.szTip, BuildTrayTip().c_str(), _TRUNCATE);
     Shell_NotifyIconW(NIM_ADD, &nid);
+
+    // Version 4 is what delivers NIN_POPUPOPEN, the only notification that
+    // arrives just before the shell draws the tooltip: it lets the tip be
+    // rebuilt at that moment instead of showing whatever was cached at add
+    // time. Failure is harmless - the old message shape still works below.
+    NOTIFYICONDATAW ver = {};
+    ver.cbSize = sizeof(ver);
+    ver.hWnd = h;
+    ver.uID = TRAY_ID;
+    ver.uVersion = NOTIFYICON_VERSION_4;
+    Shell_NotifyIconW(NIM_SETVERSION, &ver);
 }
 
-// The tooltip answers "is it on, and what has it done" without opening the menu.
+// Rebuild the tooltip from live state and push it into the shell.
 static void UpdateTrayTip() {
     if (!g_hwnd) return;
     NOTIFYICONDATAW nid = {};
@@ -579,6 +658,31 @@ static void UpdateTrayTip() {
     nid.uFlags = NIF_TIP;
     wcsncpy_s(nid.szTip, BuildTrayTip().c_str(), _TRUNCATE);
     Shell_NotifyIconW(NIM_MODIFY, &nid);
+}
+
+// Pause/resume changes both the picture and the sentence.
+static void UpdateTrayIcon() {
+    if (!g_hwnd) return;
+    NOTIFYICONDATAW nid = {};
+    nid.cbSize = sizeof(nid);
+    nid.hWnd = g_hwnd;
+    nid.uID = TRAY_ID;
+    nid.uFlags = NIF_ICON;
+    nid.hIcon = TrayIconForState();
+    Shell_NotifyIconW(NIM_MODIFY, &nid);
+}
+
+static void RefreshTray() {
+    UpdateTrayIcon();
+    UpdateTrayTip();
+}
+
+// One notification for every surface that shows live state. The tooltip, the
+// tray picture and an open report all hang off this single call, so a change
+// can never reach one of them and miss another.
+static void OnStateChanged() {
+    RefreshTray();
+    RefreshStatusIfOpen();
 }
 
 // ---------------------------------------------------------------- language
@@ -743,10 +847,6 @@ static HMENU BuildTrayMenu() {
             label = T(L"足迹报告（干净）…", L"Footprint report (clean)\u2026");
         AppendMenuW(m, MF_STRING, IDM_STATUS, label.c_str());
     }
-    AppendMenuW(m, MF_STRING, IDM_CLEAN,
-                T(L"\u6E05\u9664\u5168\u90E8\u75D5\u8FF9\u5E76\u9000\u51FA\u2026",
-                  L"Clear all traces and exit\u2026"));
-
     AppendMenuW(m, MF_SEPARATOR, 0, NULL);
 
     // --- exit: always last, always alone -------------------------------
@@ -848,7 +948,13 @@ static LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wParam, LPARAM lParam) 
                 std::wstring line = L"accelerated: ";
                 line += title;
                 Log(line.c_str());
+                OnStateChanged();   // one more window than the tip currently claims
             }
+        } else if (wParam == HSHELL_WINDOWDESTROYED) {
+            // Closing a window lowers the count. Only windows carrying our mark
+            // can change it, so the other few hundred closes cost nothing.
+            HWND gone = reinterpret_cast<HWND>(lParam);
+            if (gone && IsMarked(gone)) OnStateChanged();
         } else if (wParam == HSHELL_WINDOWACTIVATED || wParam == HSHELL_RUDEAPPACTIVATED) {
             // Remember the last folder window the user worked in; the tray menu
             // needs it because at click time the foreground is the taskbar.
@@ -895,6 +1001,7 @@ static LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wParam, LPARAM lParam) 
         swprintf_s(line, L"initial sweep: %d applied, %d minimized",
                    c.n, c.skipped);
         Log(line);
+        if (c.n) OnStateChanged();   // the report may already be open
         return 0;
     }
 
@@ -914,13 +1021,29 @@ static LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wParam, LPARAM lParam) 
                 // can retry it. Leaving it marked would hide it forever.
                 RemovePropW(r, PROP_MARK);
                 RemovePropW(r, PROP_TICK);
+                OnStateChanged();   // that window no longer counts
             }
         }
         return 0;
 
-    case WM_TRAYICON:
-        if (lParam == WM_RBUTTONUP || lParam == WM_LBUTTONUP) ShowMenu(h);
+    case WM_TRAYICON: {
+        // Version 4 packs the event into LOWORD(lParam) and the cursor into
+        // wParam; the legacy shape puts the event in lParam itself. LOWORD
+        // reads the same value either way, so one handler covers both.
+        UINT ev = LOWORD(lParam);
+        if (ev == NIN_POPUPOPEN) {
+            // Fires just before the shell draws the tooltip. Rebuilding the
+            // text here is what stops the hover popup from showing a count
+            // that was cached minutes ago.
+            UpdateTrayTip();
+            return 0;
+        }
+        if (ev == NIN_POPUPCLOSE) return 0;
+        if (ev == WM_RBUTTONUP || ev == WM_CONTEXTMENU ||
+            ev == WM_LBUTTONUP || ev == NIN_SELECT || ev == NIN_KEYSELECT)
+            ShowMenu(h);
         return 0;
+    }
 
     case WM_COMMAND:
         switch (LOWORD(wParam)) {
@@ -932,7 +1055,7 @@ static LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wParam, LPARAM lParam) 
             break;
         case IDM_PAUSE:
             g_paused = !g_paused;
-            UpdateTrayTip();
+            OnStateChanged();
             Log(g_paused ? L"paused" : L"resumed");
             break;
         case IDM_APPLY: {
@@ -944,7 +1067,7 @@ static LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wParam, LPARAM lParam) 
                 break;
             }
             if (Accelerate(t, true)) Log(L"manual apply: last active folder window");
-            UpdateTrayTip();
+            OnStateChanged();
             break;
         }
         case IDM_APPLY_ALL: {
@@ -953,7 +1076,7 @@ static LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wParam, LPARAM lParam) 
             wchar_t buf[96];
             swprintf_s(buf, L"apply-all: %d applied, %d minimized", c.n, c.skipped);
             Log(buf);
-            UpdateTrayTip();
+            OnStateChanged();
             break;
         }
         case IDM_STATUS:
@@ -977,31 +1100,6 @@ static LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wParam, LPARAM lParam) 
             Log(g_initial ? L"start-up sweep on (default, nothing stored)"
                           : L"start-up sweep off (stored)");
             break;
-        case IDM_CLEAN: {
-            if (Say(T(L"将删除本程序留下的全部可清理痕迹：\n\n"
-                       L"  · 设置键 HKCU\\Software\\ExplorerF11\n"
-                       L"  · 开机自启项，以及任务管理器为它记的启动开关\n"
-                       L"  · 日志文件\n"
-                       L"  · Windows 为它记的托盘图标、兼容性、应用名、启动次数与预读取条目\n\n"
-                       L"程序本体不会被删除。完成后本程序退出，下次启动回到全部默认设置。"
-                       L"确定继续？",
-                       L"Every removable trace of this program will be deleted:\n\n"
-                       L"  - settings key HKCU\\Software\\ExplorerF11\n"
-                       L"  - the autostart entry and the startup flag Task Manager kept for it\n"
-                       L"  - the log file\n"
-                       L"  - the tray icon, compatibility, friendly-name, launch-count and "
-                       L"Prefetch records Windows kept for it\n\n"
-                       L"The exe itself is not deleted. The tool then exits, and the next start "
-                       L"is back to defaults. Continue?"),
-                    MB_ICONQUESTION | MB_YESNO) != IDYES)
-                break;
-            CleanReport rep = CleanAll();
-            Log(L"registry cleaned");
-            RemoveTray(h);
-            ShowCleanReport(rep);
-            DestroyWindow(h);
-            break;
-        }
         case IDM_EXIT:
             DestroyWindow(h);
             break;
@@ -1021,10 +1119,10 @@ static LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wParam, LPARAM lParam) 
             UnhookWinEvent(g_winEvent2);
             g_winEvent2 = NULL;
         }
-        if (g_icon) {
-            DestroyIcon(g_icon);
-            g_icon = NULL;
-        }
+        if (g_iconOn)     { DestroyIcon(g_iconOn);     g_iconOn = NULL; }
+        if (g_iconPaused) { DestroyIcon(g_iconPaused); g_iconPaused = NULL; }
+        if (g_iconBig)    { DestroyIcon(g_iconBig);    g_iconBig = NULL; }
+        if (g_iconSmall)  { DestroyIcon(g_iconSmall);  g_iconSmall = NULL; }
         DeregisterShellHookWindow(h);
         RemoveTray(h);
         Log(L"stopped");
@@ -1123,8 +1221,9 @@ static std::wstring UsageText() {
         L"      最后跟随系统语言。托盘里的选择会被保存；选回系统语言即删除保存值。\n\n"
         L"足迹：默认配置不写注册表、不建文件。只有把某个开关改成非默认值、勾选\n"
         L"      开机自启或切换界面语言时才会写入，改回默认即删除。--status 列出\n"
-        L"      全部可能位置（含 Windows 自动记录的那些），--clean 清零。程序本体\n"
-        L"      不算痕迹，要彻底卸载请自行删除 ExplorerF11.exe。\n\n"
+        L"      全部可能位置（含 Windows 自动记录的那些），--clean 清零。\n"
+        L"      界面里的清理入口只有一处：足迹报告窗口底部的「清理痕迹…」，执行前会再确认。\n"
+        L"      程序本体不算痕迹，要彻底卸载请自行删除 ExplorerF11.exe。\n\n"
         L"单位：加速以窗口为单位，不以选项卡为单位 —— F11 由窗口框架处理，一次往返对\n"
         L"      该窗口内的全部选项卡同时生效，选项卡不会单独加速。状态行括号里是这些\n"
         L"      窗口当前包含的选项卡数。\n\n"
@@ -1139,8 +1238,9 @@ static std::wstring UsageText() {
         L"      value appears only when a setting leaves its default, when autostart is\n"
         L"      ticked, or when the UI language is switched; returning to the default\n"
         L"      deletes it. --status lists every possible location (including the ones\n"
-        L"      Windows records on its own), --clean zeroes them. The exe is not a trace:\n"
-        L"      delete ExplorerF11.exe yourself for a full uninstall.\n\n"
+        L"      Windows records on its own), --clean zeroes them. The only clean entry in\n"
+        L"      the UI is the \"Clean up\u2026\" button in the footprint report; it asks first.\n"
+        L"      The exe is not a trace: delete ExplorerF11.exe yourself for a full uninstall.\n\n"
         L"Unit: acceleration is counted in windows, not in tabs - F11 is handled by the\n"
         L"      window frame, so one round trip covers every tab in that window at once,\n"
         L"      and a tab is never accelerated on its own. The bracketed figure is how many\n"
@@ -1246,7 +1346,6 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, PWSTR, int) {
 
     // Preferences live in the registry (not on the command line) so they survive
     // both autostart and self-relaunch, neither of which passes arguments.
-    MigrateOldName();
     g_tabs    = CfgRead(CFG_TABS, DEF_TABS);
     g_initial = CfgRead(CFG_INITIAL, DEF_INITIAL);
 

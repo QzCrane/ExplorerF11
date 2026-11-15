@@ -324,18 +324,6 @@ int CleanPrefetch() {
     return removed;
 }
 
-int CleanLegacy() {
-    int n = 0;
-    if (RegDeleteKeyW(HKEY_CURRENT_USER, OLD_CFG_KEY) == ERROR_SUCCESS) ++n;
-    if (DeleteRunValue(OLD_RUN_VALUE)) ++n;
-    HKEY k;
-    if (RegOpenKeyExW(HKEY_CURRENT_USER, APPROVED_KEY, 0, KEY_SET_VALUE, &k) == ERROR_SUCCESS) {
-        if (RegDeleteValueW(k, OLD_RUN_VALUE) == ERROR_SUCCESS) ++n;
-        RegCloseKey(k);
-    }
-    return n;
-}
-
 // ---------------------------------------------------------------- formatting
 
 std::wstring Pad2(int n) {
@@ -561,44 +549,6 @@ std::vector<Footprint> CollectFootprints() {
         if (x.present) x.content = AcceleratedText(m);
         f.push_back(x);
     }
-    // ---- 12-14. legacy leftovers ---------------------------------------
-    {
-        Footprint x;
-        x.group   = Group::Legacy;
-        x.label   = T(L"旧版本设置键", L"Legacy settings key");
-        x.writer  = T(L"v4 及更早版本", L"v4 and earlier");
-        x.where   = std::wstring(L"HKCU\\") + OLD_CFG_KEY;
-        x.note    = T(L"旧版本的产品名是 ExplorerF11Ultra；新版本首次运行自动迁移并删除",
-                      L"older builds used the name ExplorerF11Ultra; the first run of 6.x migrates "
-                      L"and deletes it");
-        x.present = KeyContents(HKEY_CURRENT_USER, OLD_CFG_KEY, &d, &x.bytes);
-        if (x.present) x.content = d + L" (" + FmtBytes(x.bytes) + L")";
-        f.push_back(x);
-    }
-    {
-        Footprint x;
-        x.group   = Group::Legacy;
-        x.label   = T(L"旧版本自启项", L"Legacy autostart entry");
-        x.writer  = T(L"v4 及更早版本", L"v4 and earlier");
-        x.where   = std::wstring(L"HKCU\\") + RUN_KEY + L"\\" + OLD_RUN_VALUE;
-        x.note    = T(L"新版本首次运行会把它改指到当前 exe；「清除全部痕迹」也会删除",
-                      L"repointed at the current exe on first run; \"clear all traces\" deletes it too");
-        x.present = OneValue(HKEY_CURRENT_USER, RUN_KEY, OLD_RUN_VALUE, &d, &x.bytes);
-        if (x.present) x.content = d + L" (" + FmtBytes(x.bytes) + L")";
-        f.push_back(x);
-    }
-    {
-        Footprint x;
-        x.group   = Group::Legacy;
-        x.label   = T(L"旧版本启动开关", L"Legacy startup flag");
-        x.writer  = T(L"Windows；为旧版本记的", L"Windows, for the old build");
-        x.where   = std::wstring(L"HKCU\\") + APPROVED_KEY + L"\\" + OLD_RUN_VALUE;
-        x.note    = T(L"删掉自启项时若不同时删它，会留下一个孤立的开关",
-                      L"removing the entry without this flag would leave an orphan behind");
-        x.present = OneValue(HKEY_CURRENT_USER, APPROVED_KEY, OLD_RUN_VALUE, &d, &x.bytes);
-        if (x.present) x.content = d + L" (" + FmtBytes(x.bytes) + L")";
-        f.push_back(x);
-    }
     return f;
 }
 
@@ -609,7 +559,6 @@ FootprintTotals Summarize(const std::vector<Footprint> &items) {
         if (!x.present || !x.deletable) continue;
         switch (x.group) {
         case Group::Ours:    ++t.ours;    t.ourBytes += x.bytes; break;
-        case Group::Legacy:  ++t.legacy;  t.ourBytes += x.bytes; break;
         case Group::Windows: ++t.windows; t.winBytes += x.bytes; break;
         case Group::File:    break;   // the program is not a trace of itself
         }
@@ -650,8 +599,8 @@ std::wstring BuildFootprintReport(int *placesOut, DWORD *bytesOut) {
 
     s += T(L"范围：", L"scope:   ");
     s += Pad2((int)f.size());
-    s += T(L" 个可能位置，分 4 组；下列每一项都会逐一核对，缺的也列出来。\n",
-           L" possible locations in 4 groups; each one is checked below, including the "
+    s += T(L" 个可能位置，分 3 组；下列每一项都会逐一核对，缺的也列出来。\n",
+           L" possible locations in 3 groups; each one is checked below, including the "
            L"ones that are absent.\n");
     s += L"================================================================\n\n";
 
@@ -669,23 +618,20 @@ std::wstring BuildFootprintReport(int *placesOut, DWORD *bytesOut) {
         s += ItemsBytes(t.ours, t.ourBytes);
         s += T(L"；Windows 自动记录 ", L"; recorded by Windows: ");
         s += ItemsBytes(t.windows, t.winBytes);
-        s += T(L"；旧版本 ", L"; legacy: ");
-        s += FormatItemCount(t.legacy);
         s += T(L"。\n", L".\n");
     }
-    s += T(L"      标注「可清理」的项目会被「清除全部痕迹并退出」删除；程序本体不删除。\n\n",
-           L"      Items marked \"removable\" are deleted by \"clear all traces and exit\"; "
+    s += T(L"      标注「可清理」的项目会被窗口里的「清理痕迹…」删除；程序本体不删除。\n\n",
+           L"      Items marked \"removable\" are deleted by \"Clean up…\" in this window; "
            L"the exe is not.\n\n");
 
-    const wchar_t *titles[4] = {
+    const wchar_t *titles[3] = {
         T(L"── 一、本程序写入", L"-- 1. written by this program"),
         T(L"── 二、Windows 自动记录", L"-- 2. recorded by Windows"),
-        T(L"── 三、旧版本残留（v4 及更早）", L"-- 3. legacy leftovers (v4 and earlier)"),
-        T(L"── 四、程序文件", L"-- 4. program file"),
+        T(L"── 三、程序文件", L"-- 3. program file"),
     };
-    const Group order[4] = {Group::Ours, Group::Windows, Group::Legacy, Group::File};
+    const Group order[3] = {Group::Ours, Group::Windows, Group::File};
 
-    for (int g = 0; g < 4; ++g) {
+    for (int g = 0; g < 3; ++g) {
         bool header = false;
         int  idx    = 0;
         for (size_t i = 0; i < f.size(); ++i) {
@@ -719,12 +665,12 @@ std::wstring BuildFootprintReport(int *placesOut, DWORD *bytesOut) {
     s += T(L"注 1：注册表本身还有固定开销（每个键约 1 KB，每个值还有名称与头部开销），"
            L"这里只统计值数据与名称的字节数。\n"
            L"注 2：Windows 自动记录的那几项删掉之后，下次运行还会重新生成 —— 这是系统行为，不是残留。\n"
-           L"注 3：本报告只读：生成报告不会修改任何一项。\n",
+           L"注 3：本报告只读：生成报告不会修改任何一项；「清理痕迹…」按钮是唯一的删除入口，执行前会再确认一次。\n",
            L"Note 1: the registry adds fixed overhead (about 1 KB per key, plus per-value headers); "
            L"only value data and names are counted here.\n"
            L"Note 2: items recorded by Windows come back on the next run - that is OS behaviour, "
            L"not residue.\n"
-           L"Note 3: this report is read-only: generating it changes nothing.\n");
+           L"Note 3: this report is read-only: generating it changes nothing. The \"Clean up…\" button is the only place that deletes, and it asks first.\n");
 
     if (placesOut) *placesOut = t.Total();
     if (bytesOut)  *bytesOut  = t.Bytes();
@@ -748,7 +694,6 @@ CleanReport CleanAll() {
     r.mui        = DeleteMatchingValues(MUI_KEY, EXE_BASE, false);
     r.userAssist = CleanUserAssist();
     r.prefetch   = CleanPrefetch();
-    r.legacy     = CleanLegacy();
     return r;
 }
 

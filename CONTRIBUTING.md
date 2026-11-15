@@ -34,7 +34,7 @@ python tests\test_tray_cleanup.py
 python tests\test_smoke.py
 ```
 
-All six must pass before a pull request. They drive the real binary, so build
+All seven must pass before a pull request. They drive the real binary, so build
 first. Three rules for tests:
 
 - every suite asserts and exits non-zero on failure — printing a report for a

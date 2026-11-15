@@ -8,7 +8,7 @@ Windows 11 的资源管理器用 XAML 画命令栏、地址栏和导航窗格，
 
 ExplorerF11 把它自动化：文件夹窗口出现、或者你在窗口里新建选项卡时，向那个窗口
 投递同样两次 F11 循环。加速以窗口为单位——窗口里的所有选项卡共用这一次往返，
-不会逐个选项卡加速。不轮询、不抢焦点、不要管理员权限，单文件 294 KB。
+不会逐个选项卡加速。不轮询、不抢焦点、不要管理员权限，单文件 333 KB。
 
 > **这不是系统修复。** 它把绕过手段自动化了。微软从未发布针对这一差异的补丁，
 > 证据与时间线见 [docs/RESEARCH.md](docs/RESEARCH.md)。
@@ -90,14 +90,13 @@ ExplorerF11.exe [选项]
 
 ## 足迹
 
-默认零写入。报告列出 14 个可能的位置、分四组，每条都写明谁写的、在哪、现在有
+默认零写入。报告列出 11 个可能的位置、分三组，每条都写明谁写的、在哪、现在有
 什么、清理时删不删，详见 [docs/FOOTPRINTS.md](docs/FOOTPRINTS.md)。
 
 | 分组 | 例子 | 怎么清 |
 |---|---|---|
 | 本程序写入 | 设置键（`Tabs`、`InitialSweep`、`Language`）、自启项、日志文件 | `--clean` |
 | Windows 自动记录 | 托盘图标缓存、启动开关、兼容性助手、MuiCache、UserAssist、Prefetch | `--clean` |
-| 旧版本残留（v4 及更早） | `HKCU\Software\ExplorerF11Ultra` | `--clean` / 首次运行自动迁移 |
 | 程序本体 | exe 自己 | 删掉它 = 卸载 |
 
 最坏情况全部加起来不到 6 KB，而且不会越用越多：没有历史记录、没有缓存、默认不写
@@ -144,7 +143,7 @@ python tests\test_smoke.py
 |---|---|
 | [docs/USAGE.zh-CN.md](docs/USAGE.zh-CN.md) · [English](docs/USAGE.en.md) | 每个选项、每个菜单项、每个对话框 |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 模块划分、事件模型、为什么不用轮询、资源占用 |
-| [docs/FOOTPRINTS.md](docs/FOOTPRINTS.md) | 14 个位置、谁写的、怎么手动核对 |
+| [docs/FOOTPRINTS.md](docs/FOOTPRINTS.md) | 11 个位置、谁写的、怎么手动核对 |
 | [docs/RESEARCH.md](docs/RESEARCH.md) | F11 行为、微软补丁史、所有同类工具 |
 
 ## 许可

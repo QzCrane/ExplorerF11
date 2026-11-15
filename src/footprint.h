@@ -3,14 +3,13 @@
 // Footprint accounting.
 //
 // A tool that runs inside someone's shell has to be able to answer one
-// question honestly: "what did you leave behind?" That means four groups, not
+// question honestly: "what did you leave behind?" That means three groups, not
 // one:
 //
 //   ours     written by this program, and only by this program
 //   windows  created by Windows just because the exe ran (Task Manager flag,
 //            tray icon cache, compatibility assistant, MuiCache, UserAssist,
 //            Prefetch) - not authored by us, but still a residue of running us
-//   legacy   left by v4 and earlier, which used a different product name
 //   file     the exe itself: the program, not a trace of it
 //
 // The report lists every possible location, present or not, with who writes it,
@@ -25,7 +24,7 @@
 
 namespace ef11 {
 
-enum class Group { Ours, Windows, Legacy, File };
+enum class Group { Ours, Windows, File };
 
 struct Footprint {
     Group        group     = Group::Ours;
@@ -43,12 +42,11 @@ struct Footprint {
 // program) and in-memory window marks (they vanish with explorer) are excluded.
 struct FootprintTotals {
     int   ours     = 0;   // written by this program
-    int   legacy   = 0;   // written by v4 and earlier
     int   windows  = 0;   // recorded by Windows because the exe ran
-    DWORD ourBytes = 0;   // ours + legacy
+    DWORD ourBytes = 0;   // written by this program
     DWORD winBytes = 0;
 
-    int   Total() const { return ours + legacy + windows; }
+    int   Total() const { return ours + windows; }
     DWORD Bytes() const { return ourBytes + winBytes; }
     bool  Clean() const { return Total() == 0; }
 };
@@ -64,12 +62,11 @@ struct CleanReport {
     int mui        = 0;   // MuiCache friendly name
     int userAssist = 0;   // UserAssist launch counters
     int prefetch   = 0;   // %WINDIR%\Prefetch\EXPLORERF11.EXE-*.pf
-    int legacy     = 0;   // v4 key + Run value + approval flag
 
     bool Any() const { return Total() > 0; }
     int Total() const {
         return cfg + run + logFile + approved + tray + compat + mui +
-               userAssist + prefetch + legacy;
+               userAssist + prefetch;
     }
 };
 

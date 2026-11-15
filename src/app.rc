@@ -1,0 +1,44 @@
+// ExplorerF11 resources: the application icon and the version block.
+//
+// The icon has to live in the exe, not in a file next to it: Windows takes the
+// shell icon, the taskbar button and the Alt+Tab entry from here, and a single
+// exe with no external assets is the whole point of the project. Both icons
+// carry 16-256 px frames so whatever size the shell asks for is used as-is.
+//
+// String values are ASCII on purpose: rc.exe reads a .rc in the ANSI codepage
+// unless told otherwise, and a stray UTF-8 byte would corrupt the whole block.
+
+#include <windows.h>
+#include "resource.h"
+
+IDI_APP         ICON    "ExplorerF11.ico"
+IDI_APP_PAUSED  ICON    "ExplorerF11-paused.ico"
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION    6,2,0,0
+ PRODUCTVERSION 6,2,0,0
+ FILEFLAGSMASK  VS_FFI_FILEFLAGSMASK
+ FILEFLAGS      0x0L
+ FILEOS         VOS_NT_WINDOWS32
+ FILETYPE       VFT_APP
+ FILESUBTYPE    VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "CompanyName",      "ExplorerF11"
+            VALUE "FileDescription",  "ExplorerF11 - instant Explorer acceleration"
+            VALUE "FileVersion",      "6.2.0.0"
+            VALUE "InternalName",     "ExplorerF11"
+            VALUE "LegalCopyright",   "MIT License"
+            VALUE "OriginalFilename", "ExplorerF11.exe"
+            VALUE "ProductName",      "ExplorerF11"
+            VALUE "ProductVersion",   "6.2.0.0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END

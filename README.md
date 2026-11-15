@@ -12,7 +12,7 @@ ExplorerF11 automates it: when a folder window appears, or you open a new tab in
 one, it posts the same two F11 cycles to that window. Acceleration is counted per
 window - every tab in a window is covered by the same round trip, and no tab is
 ever accelerated on its own. No polling, no focus stealing, no administrator
-rights, one 294 KB exe.
+rights, one 333 KB exe.
 
 > **This is not a bug fix.** It automates a workaround for undocumented shell
 > behaviour. Microsoft has never shipped a patch that targets this difference;
@@ -110,7 +110,7 @@ if ($LASTEXITCODE -eq 0) { "clean" } else { "traces present" }
 
 ## Footprint
 
-Zero by default. The report lists 14 possible locations in four groups, with who
+Zero by default. The report lists 11 possible locations in three groups, with who
 writes each one, where it is, what it currently holds and whether cleanup
 removes it — see [docs/FOOTPRINTS.md](docs/FOOTPRINTS.md).
 
@@ -118,7 +118,6 @@ removes it — see [docs/FOOTPRINTS.md](docs/FOOTPRINTS.md).
 |---|---|---|
 | Written by this program | settings key (`Tabs`, `InitialSweep`, `Language`), autostart value, log file | `--clean` |
 | Recorded by Windows | tray icon cache, StartupApproved, Compatibility Assistant, MuiCache, UserAssist, Prefetch | `--clean` |
-| Legacy (v4 and earlier) | `HKCU\Software\ExplorerF11Ultra` | `--clean` / auto-migrated |
 | Program file | the exe itself | delete it = uninstall |
 
 Worst case, everything removable is under 6 KB. Nothing grows over time: no
@@ -167,7 +166,7 @@ machine is already clean.
 |---|---|
 | [docs/USAGE.en.md](docs/USAGE.en.md) · [中文](docs/USAGE.zh-CN.md) | every option, menu item and dialog explained |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | modules, event model, why no polling, resource profile |
-| [docs/FOOTPRINTS.md](docs/FOOTPRINTS.md) | all 14 locations, who writes them, how to verify by hand |
+| [docs/FOOTPRINTS.md](docs/FOOTPRINTS.md) | all 11 locations, who writes them, how to verify by hand |
 | [docs/RESEARCH.md](docs/RESEARCH.md) | the F11 behaviour, Microsoft's patch history, every existing tool |
 
 ## License

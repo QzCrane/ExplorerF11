@@ -11,6 +11,8 @@ CXX      ?= g++
 WINDRES  ?=
 OUT      := dist/ExplorerF11.exe
 SRC      := src/main.cpp src/config.cpp src/footprint.cpp
+RC       := src/app.rc
+ICONS    := src/ExplorerF11.ico src/ExplorerF11-paused.ico
 DEP      := $(wildcard src/*.h)
 
 CXXFLAGS ?= -std=c++17 -Os -Wall -Wextra
@@ -22,9 +24,9 @@ LDLIBS   := -luser32 -lshell32 -ladvapi32
 
 all: $(OUT)
 
-$(OUT): $(SRC) $(DEP)
+$(OUT): $(SRC) $(RC) $(ICONS) $(DEP)
 	@mkdir -p dist
-	$(CXX) $(CXXFLAGS) $(SRC) -o $@ $(LDFLAGS) $(LDLIBS)
+	$(CXX) $(CXXFLAGS) $(SRC) $(RC) -o $@ $(LDFLAGS) $(LDLIBS)
 	@echo "built $@"
 
 debug: CXXFLAGS := -std=c++17 -O0 -g -Wall -Wextra -municode -D_DEBUG
@@ -36,6 +38,7 @@ test: $(OUT)
 	python tests/test_footprint_report.py
 	python tests/test_registry_policy.py
 	python tests/test_language.py
+	python tests/test_icons.py
 	python tests/test_tray_cleanup.py
 	python tests/test_smoke.py
 
