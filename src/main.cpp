@@ -40,6 +40,13 @@
 #define _UNICODE
 #endif
 
+// _wfopen is the portable-enough way to append a UTF-8 log from a Win32 binary;
+// the "safe" variant buys nothing here and would add a template to the exe.
+// Must be defined before the CRT headers are pulled in.
+#ifdef _MSC_VER
+#define _CRT_SECURE_NO_WARNINGS
+#endif
+
 #include <windows.h>
 #include <shellapi.h>
 #include <string>
@@ -56,7 +63,7 @@ using namespace ef11;
 
 #ifdef _MSC_VER
 #pragma comment(lib, "user32.lib")
-#pragma comment(lib, "shellapi.lib")
+#pragma comment(lib, "shell32.lib")     // Shell_NotifyIconW, SHGetStockIconInfo
 #pragma comment(lib, "advapi32.lib")
 #endif
 
