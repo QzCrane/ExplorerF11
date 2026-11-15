@@ -61,10 +61,12 @@
 
 using namespace ef11;
 
+// MinGW links these four by default; MSVC needs them named explicitly.
 #ifdef _MSC_VER
-#pragma comment(lib, "user32.lib")
-#pragma comment(lib, "shell32.lib")     // Shell_NotifyIconW, SHGetStockIconInfo
-#pragma comment(lib, "advapi32.lib")
+#pragma comment(lib, "user32.lib")       // windows, menus, the tray icon message
+#pragma comment(lib, "gdi32.lib")        // CreateFontW, GetStockObject, GetDeviceCaps
+#pragma comment(lib, "shell32.lib")      // Shell_NotifyIconW, SHGetStockIconInfo
+#pragma comment(lib, "advapi32.lib")     // RegOpenKeyEx / RegSetValueEx
 #endif
 
 #ifndef HSHELL_RUDEAPPACTIVATED
