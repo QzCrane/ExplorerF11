@@ -40,13 +40,18 @@ goto done
 
 :msvc
 echo [build] MSVC cl (%MODE%)
+rem cl does not compile .rc files the way g++ does: rc.exe builds the resource
+rem object first, then the linker takes it as one more input. Skip this step and
+rem the exe ends up with no icon and no version block.
+rc /nologo /I src /fo dist\app.res src\app.rc
+if errorlevel 1 exit /b 1
 if /i "%MODE%"=="debug" (
     cl /nologo /std:c++17 /EHsc /W4 /Zi /Od /D_DEBUG ^
-       src\main.cpp src\config.cpp src\footprint.cpp src\app.rc ^
+       src\main.cpp src\config.cpp src\footprint.cpp dist\app.res ^
        /Fo:dist\ /Fe:dist\ExplorerF11.exe /link /SUBSYSTEM:CONSOLE
 ) else (
     cl /nologo /std:c++17 /EHsc /W4 /O2 /GL /DNDEBUG ^
-       src\main.cpp src\config.cpp src\footprint.cpp src\app.rc ^
+       src\main.cpp src\config.cpp src\footprint.cpp dist\app.res ^
        /Fo:dist\ /Fe:dist\ExplorerF11.exe /link /SUBSYSTEM:WINDOWS /LTCG
 )
 if errorlevel 1 exit /b 1
