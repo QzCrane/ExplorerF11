@@ -1078,11 +1078,31 @@ static void CloseRunningInstance() {
     for (int i = 0; i < 20 && IsWindow(h); ++i) Sleep(50);
 }
 
-// Console output for --status / --menu. Works when redirected to a pipe or a
-// file as well, because a -mwindows binary has no console of its own.
+// Console output for --status / --menu. This is a -mwindows binary, so it owns
+// no console; the handle is resolved in the order that covers every way the
+// program can be started:
+//   1. an inherited pipe or file — a script, a build step, `--status > out.txt`;
+//   2. the console of whoever started us — a shell, Explorer, a shortcut;
+//   3. the screen buffer of the console we are attached to, if the environment
+//      attached us but passed no inheritable handle.
+// Trying the inherited handle first matters: a redirecting parent sets it, and
+// losing it would silently drop the whole report into an invisible console.
+static HANDLE ConsoleOut() {
+    HANDLE h = GetStdHandle(STD_OUTPUT_HANDLE);
+    if (h && h != INVALID_HANDLE_VALUE) return h;
+    if (AttachConsole(ATTACH_PARENT_PROCESS)) {
+        h = GetStdHandle(STD_OUTPUT_HANDLE);
+        if (h && h != INVALID_HANDLE_VALUE) return h;
+    }
+    return CreateFileW(L"CONOUT$", GENERIC_WRITE, FILE_SHARE_WRITE | FILE_SHARE_READ,
+                       NULL, OPEN_EXISTING, 0, NULL);
+}
+
+// Writes as wide characters to a console (correct code page, no transcoding) and
+// as UTF-8 to a pipe or a file. Returns false only when there is no output at
+// all, which is the caller's cue to fall back to a dialog.
 static bool Emit(const std::wstring &text) {
-    AttachConsole(ATTACH_PARENT_PROCESS);
-    HANDLE out = GetStdHandle(STD_OUTPUT_HANDLE);
+    HANDLE out = ConsoleOut();
     if (!out || out == INVALID_HANDLE_VALUE) return false;
     DWORD n = 0;
     if (WriteConsoleW(out, text.c_str(), (DWORD)text.size(), &n, NULL)) return true;

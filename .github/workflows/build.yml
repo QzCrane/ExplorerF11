@@ -28,13 +28,37 @@ jobs:
       - name: Smoke test the binary
         shell: cmd
         run: |
-          dist\ExplorerF11.exe --version
-          dist\ExplorerF11.exe --help >nul
-          dist\ExplorerF11.exe --menu --lang en | findstr /C:"Language" >nul
-          if errorlevel 1 exit /b 1
-          dist\ExplorerF11.exe --menu >nul
-          dist\ExplorerF11.exe --status --lang en
-          rem --status exits 1 when the machine has traces; that is expected here.
+          rem Every invocation redirects stdout to a file: this is a -mwindows
+          rem binary, so an explicitly captured handle is the only channel that
+          rem is reliable everywhere, and --quiet guarantees no dialog can ever
+          rem block the job. Assertions stay ASCII-only so the batch file's own
+          rem encoding cannot influence the result.
+          dist\ExplorerF11.exe --version --quiet > dist\version.txt 2>&1
+          type dist\version.txt
+          findstr /C:"ExplorerF11 6.1.0" dist\version.txt >nul || exit /b 1
+
+          dist\ExplorerF11.exe --help --quiet > dist\help.txt 2>&1
+          findstr /C:"--status" dist\help.txt >nul || exit /b 1
+
+          dist\ExplorerF11.exe --menu --lang en --quiet > dist\menu-en.txt 2>&1
+          type dist\menu-en.txt
+          findstr /C:"Language" dist\menu-en.txt >nul || exit /b 1
+
+          rem The Chinese dump must not carry the English labels; that absence is
+          rem what proves --lang really re-localised the menu.
+          dist\ExplorerF11.exe --menu --lang zh --quiet > dist\menu-zh.txt 2>&1
+          findstr /C:"Start with Windows" dist\menu-zh.txt >nul && exit /b 1
+
+          rem --status exits 1 when the machine has traces, which a fresh runner
+          rem usually does. Only the report body is asserted, not the exit code.
+          dist\ExplorerF11.exe --status --lang en --quiet > dist\status.txt 2>&1
+          type dist\status.txt
+          findstr /C:"program:" dist\status.txt >nul || exit /b 1
+
+          rem A --lang override must leave nothing behind: the tool writes a
+          rem setting only when the user changes it, so the key must not exist.
+          reg query "HKCU\Software\ExplorerF11" >nul 2>&1 && exit /b 1
+          exit /b 0
 
       - uses: actions/upload-artifact@v4
         with:
