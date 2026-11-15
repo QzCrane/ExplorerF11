@@ -8,13 +8,11 @@
 #include <windows.h>
 
 #define EF11_VERSION      L"6.0.0"
-#define EF11_VERSION_ANSI "6.0.0"
 
 namespace ef11 {
 
 // Identity
 inline const wchar_t *APP_NAME       = L"ExplorerF11";
-inline const wchar_t *APP_REPO       = L"https://github.com/<owner>/ExplorerF11";
 inline const wchar_t *MUTEX_NAME     = L"Local\\ExplorerF11_SingleInstance";
 inline const wchar_t *WINDOW_CLASS   = L"ExplorerF11Window";
 inline const wchar_t *STATUS_CLASS   = L"ExplorerF11StatusWindow";
