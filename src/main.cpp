@@ -168,9 +168,11 @@ static void ShowCleanReport(const CleanReport &r) {
               L"Nothing to remove.\n\nThe default configuration writes no registry value and "
               L"no file, and this check found no record of the program anywhere.");
     } else {
-        wchar_t head[64];
-        swprintf_s(head, T(L"\u5DF2\u6E05\u9664 %d \u9879\uFF1A\n\n", L"%d item(s) removed:\n\n"),
-                   r.Total());
+        // Count first, then conjugate: "1 item removed" and "3 items removed"
+        // read as prose, where "%d item(s)" reads as a placeholder.
+        std::wstring head = T(L"已清除 ", L"Removed ");
+        head += std::to_wstring(r.Total());
+        head += T(L" 项：\n\n", r.Total() == 1 ? L" item:\n\n" : L" items:\n\n");
         s = head;
         AppendCleanLine(&s, T(L"\u8BBE\u7F6E\u952E\uFF08HKCU\\Software\\ExplorerF11\uFF09",
                               L"settings key (HKCU\\Software\\ExplorerF11)"), r.cfg);
@@ -903,7 +905,8 @@ static LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wParam, LPARAM lParam) 
                   L"Could not register for shell event notifications, so the tool receives "
                   L"no window events and cannot work.\n\n"
                   L"Sign out and back in, then run it again."), MB_ICONERROR);
-            return -1;        }
+            return -1;
+        }
         AddTray(h);
         g_winEvent = SetWinEventHook(EVENT_OBJECT_CREATE, EVENT_OBJECT_CREATE, NULL,
                                      WinEventProc, 0, 0,
