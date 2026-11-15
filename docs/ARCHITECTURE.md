@@ -15,7 +15,7 @@ ever ships a real fix, this project becomes unnecessary and should be deleted.
 ```
 src/
   app.h          every name the tool writes into the system, in one place
-  i18n.h         language detection + T(zh, en)
+  i18n.h         language resolution + T(zh, en); switchable while running
   config.h/.cpp  settings and autostart (HKCU only)
   footprint.h/.cpp  enumerate, report and remove every trace
   main.cpp       window, tray, shell hooks, menu, report window, CLI
@@ -100,14 +100,19 @@ Measured with `test_smoke.py` on 26300.9974, one folder window open:
 | Handles | 148 | of which 1 is ours (the single-instance mutex); the rest are the window, hooks, tray icon and thread pool |
 | Threads | 4 → 1 | 3 are `TpWorkerFactory` helpers that exit after ~45 s idle |
 | CPU | 0 % | blocked in `GetMessageW` |
-| Disk | 283 KB | static CRT, `-Os`, stripped |
+| Disk | 292 KB | static CRT, `-Os`, stripped |
 
 ## Settings
 
 `HKCU\Software\ExplorerF11` holds **only deviations from the defaults**. Writing a
 value equal to its default deletes it, and deleting the last value deletes the
 key. A fresh run therefore creates nothing, and "reset to defaults" is
-indistinguishable from "never installed".
+indistinguishable from "never installed". The key can hold three values: `Tabs`,
+`InitialSweep` (both `REG_DWORD`) and `Language` (`REG_SZ`, `zh` or `en`).
+
+`Language` uses the system language as its default: choosing the language the
+machine already speaks deletes the value instead of writing it, so the language
+feature cannot turn a zero-footprint install into a one-value install.
 
 Autostart is one `REG_SZ` under the per-user `Run` key, containing a quoted path
 and no arguments. Because preferences are in the registry rather than on the
@@ -131,9 +136,30 @@ side by side. For a single-binary utility this beats a resource DLL: no build st
 no satellite files, no `LoadString` failure mode, and a reviewer can see at a
 glance whether a string was forgotten in one language.
 
-Selection order is `--lang` → `EXPLORERF11_LANG` → Windows locale. The locale
-check consults the regional format before the UI language, because an English UI
-on a Chinese region is common and those users expect Chinese.
+Resolution order, highest priority first:
+
+| Source | Scope | Implemented by |
+|---|---|---|
+| `--lang zh\|en` | this run | argument parser sets `g_langExplicit` |
+| `EXPLORERF11_LANG` | this run | `EnvLang()` |
+| `Language` value | persistent | `LoadLanguage()` |
+| system language | default | `LocaleLang()` |
+
+The locale check consults the regional format before the UI language, because an
+English UI on a Chinese region is common and those users expect Chinese.
+
+**Switching while running** needs no re-layout, because nothing caches the text:
+
+- the tray menu is rebuilt from `BuildTrayMenu()` on every right click, so it is
+  localised by construction;
+- the tooltip is `NIF_TIP` on a `NIM_MODIFY` call, refreshed whenever the state or
+  the language changes;
+- the report window is the only long-lived surface, so `RelocalizeStatus()` sets
+  the title, the three buttons and the body again when the language changes.
+
+The radio pair inside the submenu is deliberately written in each language's own
+script (中文（简体） / English). A user who switches to a language they cannot read
+still recognises the row that switches back.
 
 ## Tests
 
@@ -141,10 +167,22 @@ The test suite drives the built binary through its public surface (`--menu`,
 `--status`, `WM_COMMAND` to the hidden window) instead of linking against
 internals. Two consequences worth keeping:
 
-- `--menu` prints the menu that `BuildTrayMenu()` actually built, so the layout
-  test cannot drift from the UI.
-- every test that changes state restores it, and the clean-button test refuses to
-  run on a machine that has real traces.
+- `--menu` prints the menu that `BuildTrayMenu()` actually built — including
+  submenus, as indented rows — so the layout test cannot drift from the UI.
+- every test that changes state restores it, including the autostart entry and
+  the stored language, and the clean-button test refuses to run on a machine that
+  has real traces.
+
+Six suites, each asserting and returning a non-zero exit code on failure:
+
+| Suite | Proves |
+|---|---|
+| `test_menu_order.py` | exact rows, groups, ticks, language radio pair |
+| `test_footprint_report.py` | report truth, both languages, live relocalisation |
+| `test_registry_policy.py` | zero writes by default, defaults delete themselves |
+| `test_language.py` | resolution order, persistence, zero-write rule |
+| `test_tray_cleanup.py` | cleanup is surgical, other programs' entries survive |
+| `test_smoke.py` | real window accelerated, resource profile, clean exit |
 
 ## Known limits
 

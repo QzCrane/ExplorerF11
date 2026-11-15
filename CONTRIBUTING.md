@@ -29,16 +29,21 @@ Requires either MSVC (Developer Command Prompt) or MinGW-w64 with `g++` on PATH.
 python tests\test_menu_order.py
 python tests\test_footprint_report.py
 python tests\test_registry_policy.py
+python tests\test_language.py
 python tests\test_tray_cleanup.py
 python tests\test_smoke.py
 ```
 
-All five must pass before a pull request. They drive the real binary, so build
-first. Two rules for tests:
+All six must pass before a pull request. They drive the real binary, so build
+first. Three rules for tests:
 
-- a test that changes state must restore it (see `test_registry_policy.py`);
+- every suite asserts and exits non-zero on failure — printing a report for a
+  human to read is not a test;
+- a test that changes state must restore it, including the autostart entry and
+  the stored language (see `test_registry_policy.py`);
 - a test must never delete a real user's settings. The clean-button test only
-  runs when the machine is already clean.
+  runs when the machine is already clean, and the tray test plants its own keys
+  instead of touching the user's.
 
 ## Code style
 
@@ -56,6 +61,18 @@ first. Two rules for tests:
 - Update `CHANGELOG.md` under an `Unreleased` heading for anything user-visible.
 - If you add a flag, add it to `UsageText()` in `src/main.cpp` in both languages,
   and to the table in both usage documents.
+
+## Docs
+
+Screenshots in `docs/images` are captures of the running binary, so they must be
+regenerated after any change to the menu or the report:
+
+```bat
+python tools\capture-screenshots.py zh
+```
+
+The script drives the real windows, so build first and close anything that would
+photobomb the popup.
 
 ## Reporting a bug
 

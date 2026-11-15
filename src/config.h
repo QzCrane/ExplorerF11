@@ -21,6 +21,12 @@ bool CfgRead(const wchar_t *name, bool def);
 void CfgWrite(const wchar_t *name, bool value, bool def);
 void CfgForget(const wchar_t *name);
 
+// String settings (currently only the UI language). An absent value and an
+// empty value mean the same thing: no opinion, follow the system. Writing an
+// empty string is therefore a delete, which keeps the zero-trace rule intact.
+std::wstring CfgReadStr(const wchar_t *name);
+void CfgWriteStr(const wchar_t *name, const std::wstring &value);
+
 bool IsAutostartEnabled();       // Run value present AND not disabled
 void SetAutostart(bool on);      // never touches the shared Run key itself
 bool DeleteRunValue(const wchar_t *value);

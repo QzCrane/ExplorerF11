@@ -7,7 +7,7 @@
 
 #include <windows.h>
 
-#define EF11_VERSION      L"6.0.0"
+#define EF11_VERSION      L"6.1.0"
 
 namespace ef11 {
 
@@ -39,6 +39,12 @@ inline const wchar_t *USERASSIST_KEY = L"Software\\Microsoft\\Windows\\CurrentVe
 // Leftovers from v4 and earlier (different product name)
 inline const wchar_t *OLD_RUN_VALUE  = L"ExplorerF11Ultra";
 inline const wchar_t *OLD_CFG_KEY    = L"Software\\ExplorerF11Ultra";
+
+// Value names inside CFG_KEY. Kept here so the footprint report and the writer
+// can never disagree about what a key may contain.
+inline const wchar_t *CFG_TABS       = L"Tabs";
+inline const wchar_t *CFG_INITIAL    = L"InitialSweep";
+inline const wchar_t *CFG_LANG       = L"Language";   // REG_SZ: "zh" | "en"
 
 // Defaults. A setting equal to its default is *deleted* from the registry
 // instead of being stored, which is what keeps the default state at zero

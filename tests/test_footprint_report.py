@@ -1,11 +1,12 @@
 """
-Tests for the footprint report: --status, the tray window, and the two
-languages.
+Tests for the footprint report: --status, the report window, and both languages.
 
 What is proven here:
   1. the report tells the truth (verdict, exit code, item count, groups),
   2. merely LOOKING at it writes nothing (state before == state after),
-  3. both languages render the same structure,
+  3. both languages render the same structure, and English carries no Chinese,
+  4. the window shows the same report as --status, and it follows a language
+     switch while open.
 
 The clean button is only exercised in the already-clean case: a test must not
 delete a real installation's settings as a side effect.
@@ -33,6 +34,7 @@ COMPAT = r"Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Compatibi
 MUI = r"Software\Classes\Local Settings\Software\Microsoft\Windows\Shell\MuiCache"
 
 IDM_STATUS = 1010
+IDM_LANG_EN = 1012
 IDC_STATUS_TEXT = 2001
 IDC_STATUS_CLEAN = 2003
 
@@ -67,8 +69,8 @@ def kill():
     time.sleep(0.5)
 
 
-def start():
-    subprocess.Popen([EXE, "--lang", "zh"], cwd=os.path.dirname(EXE))
+def start(*args):
+    subprocess.Popen([EXE] + list(args), cwd=os.path.dirname(EXE))
     time.sleep(1.4)
 
 
@@ -91,8 +93,8 @@ def post_cmd(cmd_id):
     return True
 
 
-def run_status(extra=()):
-    p = subprocess.run([EXE, "--status", *extra], capture_output=True, timeout=25, env=ENV)
+def run_status(extra=(), env=ENV):
+    p = subprocess.run([EXE, "--status", *extra], capture_output=True, timeout=25, env=env)
     return p.returncode, p.stdout.decode("utf-8", "replace")
 
 
@@ -195,9 +197,22 @@ def clipboard_text():
 
 def read_edit(win):
     edit = u.GetDlgItem(win, IDC_STATUS_TEXT)
-    buf = ctypes.create_unicode_buffer(32768)
-    u.SendMessageW(edit, 0x000D, 32768, ctypes.cast(buf, ctypes.c_void_p).value)
+    buf = ctypes.create_unicode_buffer(65536)
+    u.SendMessageW(edit, 0x000D, 65536, ctypes.cast(buf, ctypes.c_void_p).value)
     return buf.value
+
+
+def dlg_text(win, ctrl_id):
+    h = u.GetDlgItem(win, ctrl_id)
+    if not h:
+        return ""
+    buf = ctypes.create_unicode_buffer(256)
+    u.GetWindowTextW(h, buf, 256)
+    return buf.value
+
+
+def items(text):
+    return [l for l in text.splitlines() if l[:1] == "[" and "]" in l]
 
 
 print("\n==== 1. 报告与真实状态一致 ====")
@@ -206,42 +221,57 @@ before = state()
 print("      state:", before)
 code, out = run_status()
 print("      --status exit =", code)
-for line in out.strip().splitlines()[:5]:
+for line in out.strip().splitlines()[:6]:
     print("      " + line)
 
 clean = "结论：干净" in out
 check("退出码与结论一致", code, 0 if clean else 1)
 
-print("\n==== 2. 结构：4 段、14 项、每项四行 ====")
+print("\n==== 2. 结构：4 段、14 项、字段齐全 ====")
 sections = [l for l in out.splitlines() if l.startswith("── ")]
 check("四段标题", len(sections), 4)
-items = [l for l in out.splitlines() if l[:1] == "[" and "]" in l]
-check("条目总数", len(items), 14)
+check("条目总数", len(items(out)), 14)
 check_true("每段编号都从 1 开始",
-           [l.split("]")[0] + "]" for l in items].count("[1]") == 4,
-           str([l.split("]")[0] + "]" for l in items].count("[1]")))
-for field in ("谁写：", "位置：", "说明："):
-    check("%s 行数 = 条目数" % field, out.count(field), 14)
+           [l.split("]")[0] + "]" for l in items(out)].count("[1]") == 4,
+           str([l.split("]")[0] + "]" for l in items(out)].count("[1]")))
+check_true("报告说明检查范围",
+           any(l.startswith("范围：") and "14" in l for l in out.splitlines()),
+           " ".join(l for l in out.splitlines() if l.startswith("范围：")))
+check("谁写：行数 = 条目数", out.count("谁写："), 14)
+check("位置：行数 = 条目数", out.count("位置："), 14)
+check("说明：行数 = 条目数", out.count("说明："), 14)
 check_true("程序本体注明不是残留", "不是残留" in out or "干净" in out)
-check_true("Windows 记录有解释", "不是它写的" in out or "干净" in out)
+check_true("Windows 记录单独成段并解释来源",
+           "── 二、Windows 自动记录" in out and "这是系统行为" in out, "")
+check_true("可清理标记存在", "· 可清理" in out or clean)
+check_true("报告声明只读", "本报告只读" in out)
+check_true("结论含总数与分组", ("需要清理" in out and "Windows 自动记录" in out) or clean)
 
 print("\n==== 3. 英文版：同样的结构，没有中文 ====")
 p = subprocess.run([EXE, "--status", "--lang", "en"], capture_output=True, timeout=25)
 en = p.stdout.decode("utf-8", "replace")
 check("英文版退出码一致", p.returncode, code)
-check("英文版条目数一致", len([l for l in en.splitlines() if l[:1] == "[" and "]" in l]),
-      len(items))
+check("英文版条目数一致", len(items(en)), len(items(out)))
+check("英文版段数一致",
+      len([l for l in en.splitlines() if l.startswith("-- ")]),
+      len(sections))
+check("英文版谁写行数一致", en.count("who:    "), 14)
+check("英文版说明行数一致", en.count("note:   "), 14)
 check_true("英文版没有中文字符",
            not any("\u4e00" <= ch <= "\u9fff" for ch in en))
 check_true("英文版标题正确", en.startswith("ExplorerF11 "), en.splitlines()[0])
 check_true("中文版标题正确", out.startswith("ExplorerF11 "), out.splitlines()[0])
+check_true("英文版声明只读", "read-only" in en)
+check_true("英文版单复数正确",
+           "(1 item)" in en or "(0 items)" in en or "1 item to remove" in en
+           or "0 items to remove" in en, "")
 
 print("\n==== 4. 只看不写 ====")
 kill()
 check("状态与测试前完全一致", state(), before)
 
 print("\n==== 5. 托盘窗口 ====")
-start()
+start("--lang", "zh")
 check("隐藏窗口存在", bool(hwnd("ExplorerF11Window")), True)
 post_cmd(IDM_STATUS)
 win = hwnd("ExplorerF11StatusWindow")
@@ -249,9 +279,10 @@ check("足迹窗口已打开", bool(win), True)
 if win:
     check("窗口可见", bool(u.IsWindowVisible(win)), True)
     text = read_edit(win).replace("\r\n", "\n")
-    check("窗口里是同一份报告", len([l for l in text.splitlines() if l[:1] == "[" and "]" in l]),
-          len(items))
-    check_true("窗口内容与 --status 一致（前 80 字）", text[:80] == out[:80])
+    check("窗口里条目数一致", len(items(text)), len(items(out)))
+    check_true("窗口内容与 --status 同结构",
+               text.splitlines()[0] == out.splitlines()[0] and
+               text.count("谁写：") == out.count("谁写："))
     check_true("标题正确", "足迹报告" in window_text(win), window_text(win))
 
     u.PostMessageW(win, 0x0111, 2002, 0)   # IDC_STATUS_COPY
@@ -259,7 +290,23 @@ if win:
     clip = clipboard_text()
     check_true("「复制全部」把报告放进剪贴板", clip.startswith("ExplorerF11 "), str(len(clip)))
 
-    print("\n==== 6. 清理按钮（仅在本来就干净时执行）====")
+    print("\n==== 6. 语言切换即时作用于已打开的窗口 ====")
+    u.PostMessageW(hwnd("ExplorerF11Window"), 0x0111, IDM_LANG_EN, 0)
+    time.sleep(0.9)
+    text_en = read_edit(win).replace("\r\n", "\n")
+    check_true("窗口正文已变成英文",
+               text_en.startswith("ExplorerF11 ") and "footprint report" in text_en)
+    check_true("窗口里有英文字段", "who:    " in text_en)
+    check_true("标题已变成英文", "footprint report" in window_text(win), window_text(win))
+    check_true("按钮已本地化（Copy all）", dlg_text(win, 2002) == "Copy all",
+               dlg_text(win, 2002))
+    u.PostMessageW(hwnd("ExplorerF11Window"), 0x0111, 1011, 0)   # IDM_LANG_ZH
+    time.sleep(0.9)
+    check_true("窗口正文已回到中文", "足迹报告" in read_edit(win))
+    check_true("按钮已回到中文（复制全部）", dlg_text(win, 2002) == "复制全部",
+               dlg_text(win, 2002))
+
+    print("\n==== 7. 清理按钮（仅在本来就干净时执行）====")
     if clean:
         u.PostMessageW(win, 0x0111, IDC_STATUS_CLEAN, 0)
         time.sleep(1.0)
@@ -272,7 +319,7 @@ if win:
     time.sleep(0.5)
     check("窗口已关闭", bool(hwnd("ExplorerF11StatusWindow")), False)
 
-print("\n==== 7. 退出后状态不变 ====")
+print("\n==== 8. 退出后状态不变 ====")
 kill()
 check("状态仍与测试前一致", state(), before)
 

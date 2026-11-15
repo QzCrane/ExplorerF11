@@ -14,7 +14,7 @@
 //   main.cpp       window, tray icon, shell hooks, menu, report window, CLI
 //   config.cpp     settings + autostart (HKCU only, zero writes by default)
 //   footprint.cpp  what the tool leaves behind, and how to remove all of it
-//   i18n.h         runtime language selection (zh / en)
+//   i18n.h         runtime language selection (zh / en), switchable while running
 //
 // Registry policy:
 //   * DEFAULT CONFIG WRITES NOTHING. A fresh run creates zero keys.
@@ -25,17 +25,12 @@
 //   * Autostart state follows what Windows will actually do: a Run value that
 //     Task Manager disabled (StartupApproved flag) reads as off, and enabling
 //     deletes that flag instead of writing one.
+//   * The same rule covers the UI language: picking the system language deletes
+//     the stored Language value, so a user who never touches the menu writes
+//     nothing.
 //   * --clean removes every removable trace, including Windows' own bookkeeping
 //     (tray icon cache, compatibility store, MuiCache, UserAssist, Prefetch)
 //     and leftovers from the pre-v5 product name.
-
-#define WIN32_LEAN_AND_MEAN
-#ifndef UNICODE
-#define UNICODE
-#endif
-#ifndef _UNICODE
-#define _UNICODE
-#endif
 
 #define WIN32_LEAN_AND_MEAN
 #ifndef UNICODE
@@ -79,6 +74,8 @@ static const UINT IDM_TABS       = 1007;
 static const UINT IDM_INITIAL    = 1008;
 static const UINT IDM_CLEAN      = 1009;
 static const UINT IDM_STATUS     = 1010;
+static const UINT IDM_LANG_ZH    = 1011;
+static const UINT IDM_LANG_EN    = 1012;
 // status window controls
 static const UINT IDC_STATUS_TEXT = 2001;
 static const UINT IDC_STATUS_COPY = 2002;
@@ -139,30 +136,56 @@ static int Say(const wchar_t *text, UINT flags) {
 }
 
 // Result dialog after a clean. Every counter is independent, so a partial clean
-// (for example Prefetch without admin rights) still tells the truth.
+// (for example Prefetch without admin rights) still tells the truth: only the
+// groups that actually lost something are listed, each with its own count.
+static void AppendCleanLine(std::wstring *s, const wchar_t *label, int n) {
+    if (!n) return;
+    wchar_t b[32];
+    swprintf_s(b, L"%d", n);
+    *s += L"  \u00B7 ";
+    *s += label;
+    *s += L"  \u00D7";
+    *s += b;
+    *s += L"\n";
+}
+
 static void ShowCleanReport(const CleanReport &r) {
     std::wstring s;
     if (!r.Any()) {
-        s = T(L"\u6CA1\u6709\u4EFB\u4F55\u9700\u8981\u6E05\u7406\u7684\u4E1C\u897F\u3002\n\n"
-               L"\u9ED8\u8BA4\u914D\u7F6E\u672C\u6765\u5C31\u4E0D\u5199\u6CE8\u518C\u8868\uFF0C\u8FD9\u662F\u6B63\u5E38\u72B6\u6001\u3002",
-              L"Nothing to clean.\n\nThe default configuration writes nothing to the "
-              L"registry, so this is the normal state.");
+        s = T(L"\u6CA1\u6709\u9700\u8981\u6E05\u7406\u7684\u9879\u76EE\u3002\n\n"
+               L"\u9ED8\u8BA4\u914D\u7F6E\u4E0D\u5199\u6CE8\u518C\u8868\u3001\u4E0D\u5EFA\u6587\u4EF6\uFF0C"
+               L"\u8FD9\u6B21\u68C0\u67E5\u4E5F\u6CA1\u6709\u627E\u5230\u4EFB\u4F55\u4E0E\u672C\u7A0B\u5E8F"
+               L"\u76F8\u5173\u7684\u8BB0\u5F55\u3002",
+              L"Nothing to remove.\n\nThe default configuration writes no registry value and "
+              L"no file, and this check found no record of the program anywhere.");
     } else {
-        s = T(L"\u5DF2\u6E05\u9664\uFF1A\n", L"Removed:\n");
-        if (r.run)        s += T(L"  \u00B7 \u5F00\u673A\u81EA\u542F\u9879\n", L"  - autostart entry\n");
-        if (r.cfg)        s += T(L"  \u00B7 \u8BBE\u7F6E\u952E\uFF08HKCU\\Software\\ExplorerF11\uFF09\n",
-                                 L"  - settings key (HKCU\\Software\\ExplorerF11)\n");
-        if (r.logFile)    s += T(L"  \u00B7 \u65E5\u5FD7\u6587\u4EF6\n", L"  - log file\n");
-        if (r.approved)   s += T(L"  \u00B7 \u542F\u52A8\u5F00\u5173\u8BB0\u5F55\uFF08\u4EFB\u52A1\u7BA1\u7406\u5668\uFF09\n",
-                                 L"  - startup on/off flag (Task Manager)\n");
-        if (r.tray)       s += T(L"  \u00B7 \u6258\u76D8\u56FE\u6807\u8BB0\u5F55\n", L"  - tray icon bookkeeping\n");
-        if (r.compat)     s += T(L"  \u00B7 \u517C\u5BB9\u6027\u52A9\u624B\u8BB0\u5F55\n", L"  - compatibility assistant record\n");
-        if (r.mui)        s += T(L"  \u00B7 \u5E94\u7528\u540D\u7F13\u5B58\uFF08MuiCache\uFF09\n", L"  - friendly-name cache (MuiCache)\n");
-        if (r.userAssist) s += T(L"  \u00B7 \u542F\u52A8\u6B21\u6570\u7EDF\u8BA1\uFF08UserAssist\uFF09\n", L"  - launch counter (UserAssist)\n");
-        if (r.prefetch)   s += T(L"  \u00B7 \u9884\u8BFB\u53D6\u8BB0\u5F55\uFF08Prefetch\uFF09\n", L"  - Prefetch entry\n");
-        if (r.legacy)     s += T(L"  \u00B7 \u65E7\u7248\u672C\u6B8B\u7559\uFF08ExplorerF11Ultra\uFF09\n", L"  - legacy leftovers (ExplorerF11Ultra)\n");
-        s += T(L"\n\u7A0B\u5E8F\u672C\u4F53\u4FDD\u7559\u5728\u539F\u5904\uFF1B\u60F3\u5F7B\u5E95\u5378\u8F7D\u5C31\u628A\u5B83\u4E5F\u5220\u6389\u3002",
-               L"\nThe exe itself is still there; delete it too for a full uninstall.");
+        wchar_t head[64];
+        swprintf_s(head, T(L"\u5DF2\u6E05\u9664 %d \u9879\uFF1A\n\n", L"%d item(s) removed:\n\n"),
+                   r.Total());
+        s = head;
+        AppendCleanLine(&s, T(L"\u8BBE\u7F6E\u952E\uFF08HKCU\\Software\\ExplorerF11\uFF09",
+                              L"settings key (HKCU\\Software\\ExplorerF11)"), r.cfg);
+        AppendCleanLine(&s, T(L"\u5F00\u673A\u81EA\u542F\u9879\uFF08HKCU\\...\\Run\\ExplorerF11\uFF09",
+                              L"autostart entry (HKCU\\...\\Run\\ExplorerF11)"), r.run);
+        AppendCleanLine(&s, T(L"\u65E5\u5FD7\u6587\u4EF6\uFF08%TEMP%\\ExplorerF11.log\uFF09",
+                              L"log file (%TEMP%\\ExplorerF11.log)"), r.logFile);
+        AppendCleanLine(&s, T(L"\u542F\u52A8\u5F00\u5173\u8BB0\u5F55\uFF08\u4EFB\u52A1\u7BA1\u7406\u5668\uFF09",
+                              L"startup approval flag (Task Manager)"), r.approved);
+        AppendCleanLine(&s, T(L"\u6258\u76D8\u56FE\u6807\u8BB0\u5F55",
+                              L"tray icon bookkeeping"), r.tray);
+        AppendCleanLine(&s, T(L"\u517C\u5BB9\u6027\u52A9\u624B\u8BB0\u5F55",
+                              L"compatibility assistant store"), r.compat);
+        AppendCleanLine(&s, T(L"\u5E94\u7528\u540D\u7F13\u5B58\uFF08MuiCache\uFF09",
+                              L"friendly-name cache (MuiCache)"), r.mui);
+        AppendCleanLine(&s, T(L"\u542F\u52A8\u6B21\u6570\u7EDF\u8BA1\uFF08UserAssist\uFF09",
+                              L"launch counter (UserAssist)"), r.userAssist);
+        AppendCleanLine(&s, T(L"\u9884\u8BFB\u53D6\u8BB0\u5F55\uFF08Prefetch\uFF09",
+                              L"Prefetch entry"), r.prefetch);
+        AppendCleanLine(&s, T(L"\u65E7\u7248\u672C\u6B8B\u7559\uFF08ExplorerF11Ultra\uFF09",
+                              L"legacy leftovers (ExplorerF11Ultra)"), r.legacy);
+        s += T(L"\n\u7A0B\u5E8F\u672C\u4F53\u4FDD\u7559\u5728\u539F\u5904\uFF1B\u8981\u5F7B\u5E95\u5378\u8F7D\uFF0C"
+               L"\u518D\u628A ExplorerF11.exe \u5220\u6389\u5373\u53EF\u3002",
+               L"\nThe exe stays where it is; delete ExplorerF11.exe as well for a full uninstall.");
     }
     Say(s.c_str(), MB_ICONINFORMATION);
 }
@@ -187,6 +210,24 @@ static std::wstring ToCrlf(const std::wstring &s) {
 static void RefreshStatus(HWND h) {
     std::wstring t = ToCrlf(BuildFootprintReport(NULL, NULL));
     SetDlgItemTextW(h, IDC_STATUS_TEXT, t.c_str());
+}
+
+// The UI font that actually ships with the UI language. Segoe UI has no CJK
+// coverage on an English system, and Microsoft YaHei UI does not exist on one.
+static const wchar_t *UiFontName() {
+    return T(L"Microsoft YaHei UI", L"Segoe UI");
+}
+
+// Called when the language changes while the report window is open: title,
+// buttons and body all follow, so the window is never half-translated.
+static void RelocalizeStatus(HWND h) {
+    SetWindowTextW(h, T(L"ExplorerF11 \u00B7 \u8DB3\u8FF9\u62A5\u544A",
+                        L"ExplorerF11 \u00B7 footprint report"));
+    SetDlgItemTextW(h, IDC_STATUS_COPY,  T(L"\u590D\u5236\u5168\u90E8", L"Copy all"));
+    SetDlgItemTextW(h, IDC_STATUS_CLEAN, T(L"\u6E05\u7406\u75D5\u8FF9", L"Clean up"));
+    SetDlgItemTextW(h, IDC_STATUS_CLOSE, T(L"\u5173\u95ED", L"Close"));
+    RefreshStatus(h);
+    InvalidateRect(h, NULL, TRUE);
 }
 
 static void CopyToClipboard(HWND owner, const std::wstring &s) {
@@ -236,7 +277,7 @@ static LRESULT CALLBACK StatusProc(HWND h, UINT msg, WPARAM wParam, LPARAM lPara
                                  0, 0, 10, 10, h, (HMENU)(UINT_PTR)IDC_STATUS_TEXT, inst, NULL);
         g_statusFont = CreateFontW(-MulDiv(10, dpi, 72), 0, 0, 0, FW_NORMAL, 0, 0, 0,
                                    DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-                                   CLEARTYPE_QUALITY, FF_DONTCARE, L"Microsoft YaHei UI");
+                                   CLEARTYPE_QUALITY, FF_DONTCARE, UiFontName());
         if (e && g_statusFont) SendMessageW(e, WM_SETFONT, (WPARAM)g_statusFont, TRUE);
         if (e) SendMessageW(e, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(10, 10));
 
@@ -362,19 +403,19 @@ static void MigrateOldName() {
         bool hasTabs = false, hasInit = false;
         bool tabs = DEF_TABS, init = DEF_INITIAL;
         DWORD v = 0, cb = sizeof(v), type = 0;
-        if (RegQueryValueExW(k, L"Tabs", NULL, &type, (BYTE *)&v, &cb) == ERROR_SUCCESS
+        if (RegQueryValueExW(k, CFG_TABS, NULL, &type, (BYTE *)&v, &cb) == ERROR_SUCCESS
             && type == REG_DWORD) {
             hasTabs = true; tabs = v != 0;
         }
         cb = sizeof(v); type = 0;
-        if (RegQueryValueExW(k, L"InitialSweep", NULL, &type, (BYTE *)&v, &cb) == ERROR_SUCCESS
+        if (RegQueryValueExW(k, CFG_INITIAL, NULL, &type, (BYTE *)&v, &cb) == ERROR_SUCCESS
             && type == REG_DWORD) {
             hasInit = true; init = v != 0;
         }
         RegCloseKey(k);
 
-        if (hasTabs) CfgWrite(L"Tabs", tabs, DEF_TABS);
-        if (hasInit) CfgWrite(L"InitialSweep", init, DEF_INITIAL);
+        if (hasTabs) CfgWrite(CFG_TABS, tabs, DEF_TABS);
+        if (hasInit) CfgWrite(CFG_INITIAL, init, DEF_INITIAL);
         RegDeleteKeyW(HKEY_CURRENT_USER, OLD_CFG_KEY);
     }
 
@@ -502,6 +543,8 @@ static HICON LoadTrayIcon() {
     return LoadIconW(NULL, IDI_APPLICATION);
 }
 
+static std::wstring BuildTrayTip();   // defined below, needs the live window count
+
 static void AddTray(HWND h) {
     if (!g_icon) LoadTrayIcon();   // once; also survives an explorer restart
     NOTIFYICONDATAW nid = {};
@@ -511,8 +554,50 @@ static void AddTray(HWND h) {
     nid.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
     nid.uCallbackMessage = WM_TRAYICON;
     nid.hIcon = g_icon ? g_icon : LoadIconW(NULL, IDI_APPLICATION);
-    wcscpy_s(nid.szTip, L"ExplorerF11");
+    wcsncpy_s(nid.szTip, BuildTrayTip().c_str(), _TRUNCATE);
     Shell_NotifyIconW(NIM_ADD, &nid);
+}
+
+// The tooltip answers "is it on, and what has it done" without opening the menu.
+static void UpdateTrayTip() {
+    if (!g_hwnd) return;
+    NOTIFYICONDATAW nid = {};
+    nid.cbSize = sizeof(nid);
+    nid.hWnd = g_hwnd;
+    nid.uID = TRAY_ID;
+    nid.uFlags = NIF_TIP;
+    wcsncpy_s(nid.szTip, BuildTrayTip().c_str(), _TRUNCATE);
+    Shell_NotifyIconW(NIM_MODIFY, &nid);
+}
+
+// ---------------------------------------------------------------- language
+
+// --lang and EXPLORERF11_LANG are per-run instructions and therefore beat the
+// stored choice; the stored choice beats the machine locale, which is what
+// makes a tray click survive a restart.
+static void LoadLanguage() {
+    Lang l;
+    if (EnvLang(&l)) { SetLang(l); return; }
+    std::wstring tag = CfgReadStr(CFG_LANG);
+    if (ParseLang(tag.c_str(), &l)) { SetLang(l); return; }
+    SetLang(LocaleLang());
+}
+
+// Store the choice only while it differs from the default, and delete the value
+// when it returns: picking your own system language must leave nothing behind.
+static void SaveLanguage(Lang l) {
+    if (l == DefaultLang()) CfgWriteStr(CFG_LANG, std::wstring());
+    else                    CfgWriteStr(CFG_LANG, LangTag(l));
+}
+
+// Applies a language to everything already on screen. The menu needs no help -
+// it is rebuilt on every open - but the tooltip and an open report window do.
+static void ApplyLanguage(Lang l) {
+    SetLang(l);
+    SaveLanguage(l);
+    UpdateTrayTip();
+    if (g_status && IsWindow(g_status)) RelocalizeStatus(g_status);
+    Log(l == Lang::Zh ? L"language switched to zh" : L"language switched to en");
 }
 
 static void RemoveTray(HWND h) {
@@ -535,6 +620,28 @@ static int CountAccelerated() {
     CountCtx c = {0};
     EnumWindows(EnumCountProc, (LPARAM)&c);
     return c.marked;
+}
+
+// Name, version and live state in two short lines - the tray tooltip is the
+// only place a user sees the tool without opening anything.
+static std::wstring BuildTrayTip() {
+    std::wstring s = L"ExplorerF11 " EF11_VERSION;
+    s += L"\n";
+    if (g_paused) {
+        s += T(L"已暂停加速", L"paused");
+        return s;
+    }
+    int n = CountAccelerated();
+    if (n == 1) {
+        s += T(L"已加速 1 个窗口", L"1 window accelerated");
+    } else if (n > 1) {
+        wchar_t b[64];
+        swprintf_s(b, T(L"已加速 %d 个窗口", L"%d windows accelerated"), n);
+        s += b;
+    } else {
+        s += T(L"运行中，等待新的文件夹窗口", L"running, waiting for windows");
+    }
+    return s;
 }
 
 // The window "对当前窗口立即应用" would act on.
@@ -569,24 +676,30 @@ static HWND CurrentFolderTarget() {
 //   header (grey, not clickable) | actions | settings | maintenance | exit
 // Reading order is fixed: what you do often is highest, what cannot be undone
 // is furthest from the pointer's resting place and never next to 退出.
+// Settings read as states (ticked = on), never as verbs, and never carry an
+// ellipsis: an ellipsis is reserved for the two items that open a window.
 static HMENU BuildTrayMenu() {
     HMENU m = CreatePopupMenu();
 
-    // Header: name + live state, so "is it working / is it paused" needs no click.
-    wchar_t head[160];
+    // Header: name + version + live state, so "is it working / is it paused"
+    // needs no click and no memory.
+    std::wstring state;
     if (g_paused) {
-        swprintf_s(head, L"ExplorerF11  \u00B7  %s", T(L"\u5DF2\u6682\u505C", L"paused"));
+        state = T(L"已暂停加速", L"paused");
     } else {
         int n = CountAccelerated();
-        if (n == 1) swprintf_s(head, L"ExplorerF11  ·  %s 1 %s",
-                               T(L"已加速", L"accelerated"),
-                               T(L"个窗口", L"window"));
-        else if (n)  swprintf_s(head, L"ExplorerF11  ·  %s %d %s",
-                                T(L"已加速", L"accelerated"), n,
-                                T(L"个窗口", L"windows"));
-        else         swprintf_s(head, L"ExplorerF11  ·  %s", T(L"运行中", L"running"));
+        if (n == 1) {
+            state = T(L"已加速 1 个窗口", L"1 window accelerated");
+        } else if (n > 1) {
+            wchar_t b[64];
+            swprintf_s(b, T(L"已加速 %d 个窗口", L"%d windows accelerated"), n);
+            state = b;
+        } else {
+            state = T(L"运行中，等待新的文件夹窗口", L"running, waiting for windows");
+        }
     }
-    AppendMenuW(m, MF_STRING | MF_GRAYED, 0, head);
+    std::wstring head = L"ExplorerF11 " EF11_VERSION L"  \u00B7  " + state;
+    AppendMenuW(m, MF_STRING | MF_GRAYED, 0, head.c_str());
 
     AppendMenuW(m, MF_SEPARATOR, 0, NULL);
 
@@ -597,7 +710,7 @@ static HMENU BuildTrayMenu() {
     HWND target = CurrentFolderTarget();
     AppendMenuW(m, MF_STRING | (target ? MF_ENABLED : MF_GRAYED), IDM_APPLY,
                 T(L"\u5BF9\u5F53\u524D\u7A97\u53E3\u7ACB\u5373\u5E94\u7528",
-                  L"Apply to current window"));
+                  L"Apply to the active window"));
     if (g_log) {
         wchar_t a[64] = {0}, b[64] = {0};
         GetClassNameW(g_lastFolder, a, 64);
@@ -608,8 +721,8 @@ static HMENU BuildTrayMenu() {
         Log(dbg);
     }
     AppendMenuW(m, MF_STRING, IDM_PAUSE,
-                g_paused ? T(L"\u6062\u590D\u52A0\u901F", L"Resume")
-                         : T(L"\u6682\u505C\u52A0\u901F", L"Pause"));
+                g_paused ? T(L"\u6062\u590D\u52A0\u901F", L"Resume acceleration")
+                         : T(L"\u6682\u505C\u52A0\u901F", L"Pause acceleration"));
 
     AppendMenuW(m, MF_SEPARATOR, 0, NULL);
 
@@ -622,22 +735,35 @@ static HMENU BuildTrayMenu() {
                 T(L"\u542F\u52A8\u65F6\u5904\u7406\u5DF2\u6253\u5F00\u7684\u7A97\u53E3",
                   L"Accelerate windows open at start-up"));
     AppendMenuW(m, MF_STRING | (IsAutostartEnabled() ? MF_CHECKED : MF_UNCHECKED),
-                IDM_AUTOSTART, T(L"\u5F00\u673A\u81EA\u542F", L"Run at logon"));
+                IDM_AUTOSTART, T(L"\u5F00\u673A\u81EA\u542F", L"Start with Windows"));
+
+    // Language is a state with three possible sources, so it lives in a
+    // submenu: two radio rows, each written in its own language, so the menu
+    // stays usable even after switching to one you do not read.
+    {
+        HMENU lang = CreatePopupMenu();
+        AppendMenuW(lang, MF_STRING, IDM_LANG_ZH, L"\u4E2D\u6587\uFF08\u7B80\u4F53\uFF09");
+        AppendMenuW(lang, MF_STRING, IDM_LANG_EN, L"English");
+        CheckMenuRadioItem(lang, 0, 1, IsZh() ? 0 : 1, MF_BYPOSITION);
+        AppendMenuW(m, MF_STRING | MF_POPUP, (UINT_PTR)lang,
+                    T(L"\u754C\u9762\u8BED\u8A00", L"Language"));
+    }
 
     AppendMenuW(m, MF_SEPARATOR, 0, NULL);
 
     // --- maintenance: footprint first (read-only), then the destructive one
     {
         // The count is shown right in the menu, so "how dirty is it" is visible
-        // without opening anything.
-        int fp = 0;
-        BuildFootprintReport(&fp, NULL);
-        wchar_t label[128];
-        if (fp) swprintf_s(label, T(L"\u8DB3\u8FF9\u62A5\u544A\uFF08%d \u5904\uFF09\u2026",
-                                    L"Footprint report (%d items)\u2026"), fp);
-        else    wcscpy_s(label, T(L"\u8DB3\u8FF9\u62A5\u544A\uFF08\u5E72\u51C0\uFF09\u2026",
-                                 L"Footprint report (clean)\u2026"));
-        AppendMenuW(m, MF_STRING, IDM_STATUS, label);
+        // without opening anything. Totals only: building the whole report just
+        // to print a number would scan everything twice.
+        FootprintTotals t = CurrentTotals();
+        std::wstring label;
+        if (!t.Clean())
+            label = T(L"足迹报告（", L"Footprint report (") +
+                    FormatItemCount(t.Total()) + T(L"）…", L")\u2026");
+        else
+            label = T(L"足迹报告（干净）…", L"Footprint report (clean)\u2026");
+        AppendMenuW(m, MF_STRING, IDM_STATUS, label.c_str());
     }
     AppendMenuW(m, MF_STRING, IDM_CLEAN,
                 T(L"\u6E05\u9664\u5168\u90E8\u75D5\u8FF9\u5E76\u9000\u51FA\u2026",
@@ -660,23 +786,34 @@ static void ShowMenu(HWND h) {
     DestroyMenu(m);
 }
 
-// --menu: dump the real menu (same builder the right click uses) so the order
-// and the tick marks can be asserted in a test instead of eyeballed.
-static std::wstring MenuDump() {
-    HMENU m = BuildTrayMenu();
-    std::wstring s;
+// --menu: dump the real menu (same builder the right click uses) so the order,
+// the ticks and the submenu contents can be asserted in a test instead of
+// eyeballed. Submenu rows are indented by four spaces under a "[>]" parent.
+static void DumpMenu(HMENU m, const std::wstring &indent, std::wstring *out) {
     int n = m ? GetMenuItemCount(m) : 0;
     for (int i = 0; i < n; ++i) {
         UINT st = GetMenuState(m, i, MF_BYPOSITION);
-        if (st == (UINT)-1 || (st & MF_SEPARATOR)) { s += L"----\n"; continue; }
-        if (st & MF_CHECKED)      s += L"[\u2713] ";
-        else if (st & MF_GRAYED)  s += L"[x] ";
-        else                      s += L"[ ] ";
+        if (st == (UINT)-1 || (st & MF_SEPARATOR)) { *out += indent + L"----\n"; continue; }
+
+        HMENU sub = GetSubMenu(m, i);
+        *out += indent;
+        if (sub)                 *out += L"[>] ";
+        else if (st & MF_CHECKED) *out += L"[\u2713] ";
+        else if (st & MF_GRAYED)  *out += L"[x] ";
+        else                      *out += L"[ ] ";
+
         wchar_t txt[256] = {0};
         GetMenuStringW(m, i, txt, 256, MF_BYPOSITION);
-        s += txt;
-        s += L"\n";
+        *out += txt;
+        *out += L"\n";
+        if (sub) DumpMenu(sub, indent + L"    ", out);
     }
+}
+
+static std::wstring MenuDump() {
+    std::wstring s;
+    HMENU m = BuildTrayMenu();
+    DumpMenu(m, L"", &s);
     if (m) DestroyMenu(m);
     return s;
 }
@@ -752,8 +889,11 @@ static LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wParam, LPARAM lParam) 
         g_taskbarCreatedMsg = RegisterWindowMessageW(L"TaskbarCreated");
         if (!RegisterShellHookWindow(h)) {
             Log(L"RegisterShellHookWindow failed");
-            Say(L"\u65E0\u6CD5\u5411 Shell \u6CE8\u518C\u4E8B\u4EF6\u901A\u77E5\uFF0C"
-                L"\u7A0B\u5E8F\u65E0\u6CD5\u5DE5\u4F5C\u3002", MB_ICONERROR);
+            Say(T(L"无法向 Shell 注册事件通知，因此本程序收不到窗口事件，也就无法工作。\n\n"
+                  L"请注销后重新登录，然后再运行一次。",
+                  L"Could not register for shell event notifications, so the tool receives "
+                  L"no window events and cannot work.\n\n"
+                  L"Sign out and back in, then run it again."), MB_ICONERROR);
             return -1;        }
         AddTray(h);
         g_winEvent = SetWinEventHook(EVENT_OBJECT_CREATE, EVENT_OBJECT_CREATE, NULL,
@@ -805,8 +945,15 @@ static LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wParam, LPARAM lParam) 
 
     case WM_COMMAND:
         switch (LOWORD(wParam)) {
+        case IDM_LANG_ZH:
+            ApplyLanguage(Lang::Zh);
+            break;
+        case IDM_LANG_EN:
+            ApplyLanguage(Lang::En);
+            break;
         case IDM_PAUSE:
             g_paused = !g_paused;
+            UpdateTrayTip();
             Log(g_paused ? L"paused" : L"resumed");
             break;
         case IDM_APPLY: {
@@ -818,6 +965,7 @@ static LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wParam, LPARAM lParam) 
                 break;
             }
             if (Accelerate(t, true)) Log(L"manual apply: last active folder window");
+            UpdateTrayTip();
             break;
         }
         case IDM_APPLY_ALL: {
@@ -826,6 +974,7 @@ static LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wParam, LPARAM lParam) 
             wchar_t buf[96];
             swprintf_s(buf, L"apply-all: %d applied, %d minimized", c.n, c.skipped);
             Log(buf);
+            UpdateTrayTip();
             break;
         }
         case IDM_STATUS:
@@ -839,24 +988,32 @@ static LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wParam, LPARAM lParam) 
         }
         case IDM_TABS:
             g_tabs = !g_tabs;
-            CfgWrite(L"Tabs", g_tabs, DEF_TABS);
+            CfgWrite(CFG_TABS, g_tabs, DEF_TABS);
             Log(g_tabs ? L"new-tab acceleration on (default, nothing stored)"
                        : L"new-tab acceleration off (stored)");
             break;
         case IDM_INITIAL:
             g_initial = !g_initial;
-            CfgWrite(L"InitialSweep", g_initial, DEF_INITIAL);
+            CfgWrite(CFG_INITIAL, g_initial, DEF_INITIAL);
             Log(g_initial ? L"start-up sweep on (default, nothing stored)"
                           : L"start-up sweep off (stored)");
             break;
         case IDM_CLEAN: {
-            if (Say(T(L"\u5C06\u5220\u9664\u4E0B\u9762\u5217\u51FA\u7684\u5168\u90E8\u75D5\u8FF9\uFF08\u8BBE\u7F6E\u3001"
-                       L"\u5F00\u673A\u81EA\u542F\u3001\u65E5\u5FD7\u3001\u7CFB\u7EDF\u4E3A\u5B83\u5EFA\u7684\u8BB0\u5F55\uFF09"
-                       L"\u5E76\u9000\u51FA\u3002\n\n"
-                       L"\u7A0B\u5E8F\u672C\u4F53\u4E0D\u4F1A\u88AB\u5220\u9664\u3002\u4E0B\u6B21\u542F\u52A8\u5C06\u56DE\u5230\u5168\u90E8\u9ED8\u8BA4\u3002\u786E\u5B9A\uFF1F",
-                       L"Every trace listed in the report will be deleted (settings, autostart, "
-                       L"log, and the records Windows made for it), then the tool exits.\n\n"
-                       L"The exe itself is not deleted. The next start is back to defaults. Continue?"),
+            if (Say(T(L"将删除本程序留下的全部可清理痕迹：\n\n"
+                       L"  · 设置键 HKCU\\Software\\ExplorerF11\n"
+                       L"  · 开机自启项，以及任务管理器为它记的启动开关\n"
+                       L"  · 日志文件\n"
+                       L"  · Windows 为它记的托盘图标、兼容性、应用名、启动次数与预读取条目\n\n"
+                       L"程序本体不会被删除。完成后本程序退出，下次启动回到全部默认设置。"
+                       L"确定继续？",
+                       L"Every removable trace of this program will be deleted:\n\n"
+                       L"  - settings key HKCU\\Software\\ExplorerF11\n"
+                       L"  - the autostart entry and the startup flag Task Manager kept for it\n"
+                       L"  - the log file\n"
+                       L"  - the tray icon, compatibility, friendly-name, launch-count and "
+                       L"Prefetch records Windows kept for it\n\n"
+                       L"The exe itself is not deleted. The tool then exits, and the next start "
+                       L"is back to defaults. Continue?"),
                     MB_ICONQUESTION | MB_YESNO) != IDYES)
                 break;
             CleanReport rep = CleanAll();
@@ -934,42 +1091,58 @@ static bool Emit(const std::wstring &text) {
 static std::wstring UsageText() {
     std::wstring s;
     s += L"ExplorerF11 " EF11_VERSION;
-    s += T(L" \u2014 \u8BA9 Windows 11 \u8D44\u6E90\u7BA1\u7406\u5668\u53D8\u5FEB\n\n",
-           L" \u2014 accelerate Windows 11 File Explorer\n\n");
-    s += T(L"\u7528\u6CD5\uFF1AExplorerF11.exe [\u9009\u9879]\n\n",
-           L"Usage: ExplorerF11.exe [options]\n\n");
-    s += T(L"\u9009\u9879\uFF1A\n", L"Options:\n");
+    s += T(L" — 让 Windows 11 资源管理器变快\n\n", L" - accelerate Windows 11 File Explorer\n\n");
+    s += T(L"用法：ExplorerF11.exe [选项]\n\n", L"Usage: ExplorerF11.exe [options]\n\n");
+    s += T(L"选项：\n", L"Options:\n");
     s += T(
-        L"  \uFF08\u65E0\u53C2\u6570\uFF09        \u5728\u6258\u76D8\u91CC\u8FD0\u884C\uFF0C\u81EA\u52A8\u52A0\u901F\u65B0\u6253\u5F00\u7684\u6587\u4EF6\u5939\u7A97\u53E3\n"
-        L"  --install         \u5728\u6258\u76D8\u91CC\u8FD0\u884C\uFF0C\u5E76\u8BBE\u7F6E\u5F00\u673A\u81EA\u542F\n"
-        L"  --uninstall       \u53EA\u79FB\u9664\u5F00\u673A\u81EA\u542F\n"
-        L"  --status          \u6253\u5370\u5168\u90E8\u8DB3\u8FF9\u62A5\u544A\uFF1B\u9000\u51FA\u7801 0=\u5E72\u51C0\uFF0C1=\u6709\u75D5\u8FF9\n"
-        L"  --clean, --purge  \u6E05\u9664\u5168\u90E8\u53EF\u6E05\u75D5\u8FF9\u540E\u9000\u51FA\n"
-        L"  --menu            \u628A\u6258\u76D8\u83DC\u5355\u6309\u6587\u672C\u6253\u5370\u51FA\u6765\uFF08\u6D4B\u8BD5\u7528\uFF09\n"
-        L"  --lang zh|en      \u672C\u6B21\u8FD0\u884C\u4F7F\u7528\u7684\u754C\u9762\u8BED\u8A00\uFF08\u4E5F\u53EF\u7528 EXPLORERF11_LANG\uFF09\n"
-        L"  --log             \u5199\u65E5\u5FD7\u5230 %TEMP%\\ExplorerF11.log\n"
-        L"  --no-initial      \u4E0D\u5904\u7406\u542F\u52A8\u524D\u5DF2\u7ECF\u6253\u5F00\u7684\u7A97\u53E3\n"
-        L"  --quiet           \u4E0D\u5F39\u4EFB\u4F55\u5BF9\u8BDD\u6846\uFF08\u811A\u672C\u7528\uFF09\n"
-        L"  --version, -v     \u6253\u5370\u7248\u672C\u53F7\n"
-        L"  --help, -h        \u6253\u5370\u8FD9\u6BB5\u8BF4\u660E\n\n",
-        L"  (none)            run in the tray, accelerate new folder windows\n"
-        L"  --install         run in the tray and enable autostart\n"
-        L"  --uninstall       remove the autostart entry only\n"
-        L"  --status          print the footprint report; exit 0 = clean, 1 = traces\n"
-        L"  --clean, --purge  remove every removable trace, then exit\n"
-        L"  --menu            print the tray menu as text (used by tests)\n"
-        L"  --lang zh|en      UI language for this run (also EXPLORERF11_LANG)\n"
+        L"  （无参数）        在托盘运行，自动加速之后打开的文件夹窗口\n"
+        L"  --install         在托盘运行，并勾选开机自启\n"
+        L"  --uninstall       只删除开机自启项，其他一切不动\n"
+        L"  --status          打印完整足迹报告；退出码 0 = 干净，1 = 有可清理项\n"
+        L"  --clean, --purge  删除全部可清理痕迹后退出（会先关闭正在运行的实例）\n"
+        L"  --menu            把托盘菜单按文本打印出来（供测试与排查）\n"
+        L"  --lang zh|en      本次运行的界面语言\n"
+        L"  --log             把运行日志写到 %TEMP%\\ExplorerF11.log\n"
+        L"  --no-initial      不处理本次启动前已经打开的窗口\n"
+        L"  --quiet           不弹任何对话框（脚本用）\n"
+        L"  --version, -v     打印版本号\n"
+        L"  --help, -h        打印这段说明\n\n",
+        L"  (none)            run in the tray, accelerate folder windows opened later\n"
+        L"  --install         run in the tray and tick \"Start with Windows\"\n"
+        L"  --uninstall       remove the autostart entry only, nothing else\n"
+        L"  --status          print the full footprint report; exit 0 = clean, 1 = traces\n"
+        L"  --clean, --purge  remove every removable trace, then exit (closes a running copy)\n"
+        L"  --menu            print the tray menu as text (tests and troubleshooting)\n"
+        L"  --lang zh|en      UI language for this run\n"
         L"  --log             write %TEMP%\\ExplorerF11.log\n"
         L"  --no-initial      leave windows that were already open alone\n"
         L"  --quiet           never show a message box (for scripts)\n"
         L"  --version, -v     print the version\n"
         L"  --help, -h        print this help\n\n");
     s += T(
-        L"\u8DB3\u8FF9\uFF1A\u9ED8\u8BA4\u914D\u7F6E\u4E0D\u5199\u6CE8\u518C\u8868\u3001\u4E0D\u5EFA\u6587\u4EF6\uFF1B\u53EA\u6709\u5728\u6258\u76D8\u91CC\u6539\u8BBE\u7F6E\u6216\u52FE\u9009\n"
-        L"      \u5F00\u673A\u81EA\u542F\u65F6\u624D\u4F1A\u5199\u5165\uFF0C\u6539\u56DE\u9ED8\u8BA4\u5373\u5220\u9664\u3002\u7528 --status \u67E5\u770B\uFF0C\u7528 --clean \u6E05\u96F6\u3002\n",
-        L"Footprint: the default configuration writes no registry key and no file.\n"
-        L"      Values are stored only while a setting deviates from its default and\n"
-        L"      are deleted when it returns. --status inspects, --clean zeroes.\n");
+        L"语言：--lang 优先，其次环境变量 EXPLORERF11_LANG，再次托盘菜单里的选择，\n"
+        L"      最后跟随系统语言。托盘里的选择会被保存；选回系统语言即删除保存值。\n\n"
+        L"足迹：默认配置不写注册表、不建文件。只有把某个开关改成非默认值、勾选\n"
+        L"      开机自启或切换界面语言时才会写入，改回默认即删除。--status 列出\n"
+        L"      全部可能位置（含 Windows 自动记录的那些），--clean 清零。程序本体\n"
+        L"      不算痕迹，要彻底卸载请自行删除 ExplorerF11.exe。\n\n"
+        L"示例：\n"
+        L"  ExplorerF11.exe --install              安装，并在登录时启动\n"
+        L"  ExplorerF11.exe --status --lang en     用英文核对足迹\n"
+        L"  ExplorerF11.exe --clean --quiet        在脚本里静默清空全部痕迹\n",
+        L"Language: --lang first, then EXPLORERF11_LANG, then the choice made in the tray\n"
+        L"      menu, then the system language. The tray choice is stored; picking the\n"
+        L"      system language again deletes the stored value.\n\n"
+        L"Footprint: the default configuration writes no registry value and no file. A\n"
+        L"      value appears only when a setting leaves its default, when autostart is\n"
+        L"      ticked, or when the UI language is switched; returning to the default\n"
+        L"      deletes it. --status lists every possible location (including the ones\n"
+        L"      Windows records on its own), --clean zeroes them. The exe is not a trace:\n"
+        L"      delete ExplorerF11.exe yourself for a full uninstall.\n\n"
+        L"Examples:\n"
+        L"  ExplorerF11.exe --install              install, and start at logon\n"
+        L"  ExplorerF11.exe --status --lang en     check the footprint in English\n"
+        L"  ExplorerF11.exe --clean --quiet        clear everything silently from a script\n");
     return s;
 }
 
@@ -1006,9 +1179,10 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, PWSTR, int) {
         LocalFree(argv);
     }
 
-    // Language: --lang wins, then EXPLORERF11_LANG, then the display language.
-    // DetectLang only runs when nothing was chosen on the command line.
-    if (!g_langExplicit) DetectLang();
+    // Language: --lang wins, then EXPLORERF11_LANG, then the stored tray choice,
+    // then the system locale. LoadLanguage only runs when nothing was chosen on
+    // the command line.
+    if (!g_langExplicit) LoadLanguage();
 
     if (wantVersion) {
         std::wstring v = std::wstring(L"ExplorerF11 ") + EF11_VERSION + L"\n";
@@ -1023,8 +1197,8 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, PWSTR, int) {
     }
 
     if (wantMenu) {
-        g_tabs    = CfgRead(L"Tabs", DEF_TABS);          // read-only, so the dump
-        g_initial = CfgRead(L"InitialSweep", DEF_INITIAL); // shows the real ticks
+        g_tabs    = CfgRead(CFG_TABS, DEF_TABS);          // read-only, so the dump
+        g_initial = CfgRead(CFG_INITIAL, DEF_INITIAL);    // shows the real ticks
         std::wstring d = MenuDump();
         if (!Emit(d)) Say(d.c_str(), MB_ICONINFORMATION);
         return 0;
@@ -1049,11 +1223,12 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, PWSTR, int) {
 
     if (wantUninstall) {
         SetAutostart(false);
-        Say(T(L"\u5DF2\u79FB\u9664\u5F00\u673A\u81EA\u542F\u3002\n\n"
-              L"\u82E5\u8FD8\u60F3\u6E05\u6389\u5176余\u75D5\u8FF9\uFF0C\u8BF7\u8FD0\u884C\uFF1A"
-              L"ExplorerF11.exe --clean",
-              L"Autostart removed.\n\nTo remove the remaining traces, run: "
-              L"ExplorerF11.exe --clean"), MB_ICONINFORMATION);
+        Say(T(L"已删除开机自启项。\n\n"
+              L"程序本体与其他痕迹都还在。要全部清除，运行：\n"
+              L"    ExplorerF11.exe --clean",
+              L"Autostart entry removed.\n\n"
+              L"The exe and the remaining traces are still there. To clear everything, run:\n"
+              L"    ExplorerF11.exe --clean"), MB_ICONINFORMATION);
         return 0;
     }
 
@@ -1066,8 +1241,8 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, PWSTR, int) {
     // Preferences live in the registry (not on the command line) so they survive
     // both autostart and self-relaunch, neither of which passes arguments.
     MigrateOldName();
-    g_tabs    = CfgRead(L"Tabs", DEF_TABS);
-    g_initial = CfgRead(L"InitialSweep", DEF_INITIAL);
+    g_tabs    = CfgRead(CFG_TABS, DEF_TABS);
+    g_initial = CfgRead(CFG_INITIAL, DEF_INITIAL);
 
     if (wantInstall) SetAutostart(true);
 

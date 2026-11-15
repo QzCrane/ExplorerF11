@@ -35,6 +35,7 @@ test: $(OUT)
 	python tests/test_menu_order.py
 	python tests/test_footprint_report.py
 	python tests/test_registry_policy.py
+	python tests/test_language.py
 	python tests/test_tray_cleanup.py
 	python tests/test_smoke.py
 

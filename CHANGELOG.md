@@ -2,14 +2,61 @@
 
 All notable changes to this project. Versions follow [SemVer](https://semver.org/).
 
+## 6.1.0 - 2026-11-15
+
+Language-switching release. The UI was bilingual since 6.0.0 but could only be
+changed before start-up; now it can be changed from the tray, while the program
+is running, and the choice survives a restart.
+
+### Added
+- **Language submenu in the tray** (`Language` / 界面语言): 中文（简体） and
+  English, as a radio pair, each written in its own language so the menu stays
+  usable after switching to a language you do not read. The switch is immediate:
+  the menu, the tooltip and an already-open footprint window all follow.
+- **The choice is persisted** in `HKCU\Software\ExplorerF11\Language` and used
+  on the next start, but only while it differs from the system language.
+  Picking the system language deletes the value and prunes the empty key, so a
+  user who never opens that submenu still writes nothing at all.
+- **Tray tooltip** now carries the version and the live state (windows
+  accelerated / paused / waiting).
+- **Footprint report header**: program path, generation time, UI language and
+  the number of locations inspected.
+- **`tests/test_language.py`**: 28 checks covering the resolution order,
+  persistence, live switching of an open report window, `--lang` precedence and
+  the zero-write rule.
+
+### Changed
+- **Every user-visible string rewritten** to state exactly what happens and what
+  it costs, in both languages: menu items, help text, footprint notes, clean
+  confirmation and result dialogs.
+- Footprint items now carry an explicit `removable` / `kept` tag, absent items
+  are no longer labelled "nothing to remove" (the state line already says
+  absent), and the verdict reports per-group counts with correct English plurals.
+- `--menu` dumps submenus as indented rows, so the language pair is asserted by
+  the same test as the rest of the menu.
+- The clean confirmation lists every category that will be deleted instead of
+  summarising them.
+- The report window picks the UI font that belongs to the language (Microsoft
+  YaHei UI / Segoe UI).
+- `tests/test_menu_order.py`, `test_footprint_report.py`, `test_tray_cleanup.py`
+  and `test_smoke.py` now assert and exit non-zero on failure, instead of
+  printing a report for a human to read.
+
+### Fixed
+- Mixed-script typo in the `--uninstall` message (其余 was written as 其
+  followed by a literal 余).
+- The "cannot register for shell events" error box was the only string that
+  bypassed localisation.
+
 ## 6.0.0 - 2026-11-15
 
 Repository and architecture release; same behaviour as 5.3 plus a complete
 footprint model.
 
 ### Added
-- **Bilingual UI** (Chinese / English), chosen from `--lang`, `EXPLORERF11_LANG`
-  or the Windows display language. No resource DLL, no restart.
+- **Bilingual UI** (Chinese / English), chosen at start-up from `--lang`,
+  `EXPLORERF11_LANG` or the Windows display language. No resource DLL. (6.1.0
+  made the choice switchable while running.)
 - **Full footprint report** (`--status`, tray window): 14 items in four groups -
   what this program wrote, what Windows recorded because it ran, legacy v4
   leftovers, and the program file itself. Each item shows who wrote it, the exact

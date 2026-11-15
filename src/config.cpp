@@ -135,4 +135,33 @@ void CfgWrite(const wchar_t *name, bool value, bool def) {
     RegCloseKey(k);
 }
 
+std::wstring CfgReadStr(const wchar_t *name) {
+    HKEY k;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, CFG_KEY, 0, KEY_QUERY_VALUE, &k) != ERROR_SUCCESS)
+        return std::wstring();
+    wchar_t buf[64] = {0};
+    DWORD cb = sizeof(buf), type = 0;
+    std::wstring out;
+    if (RegQueryValueExW(k, name, NULL, &type, (BYTE *)buf, &cb) == ERROR_SUCCESS &&
+        type == REG_SZ && cb >= sizeof(wchar_t))
+        out.assign(buf);        // RegQueryValueExW zero-terminates REG_SZ data
+    RegCloseKey(k);
+    return out;
+}
+
+// An empty string is "no opinion", so it must not create the key at all.
+void CfgWriteStr(const wchar_t *name, const std::wstring &value) {
+    if (value.empty()) {
+        CfgForget(name);
+        return;
+    }
+    HKEY k;
+    if (RegCreateKeyExW(HKEY_CURRENT_USER, CFG_KEY, 0, NULL, 0, KEY_SET_VALUE,
+                        NULL, &k, NULL) != ERROR_SUCCESS)
+        return;
+    RegSetValueExW(k, name, 0, REG_SZ, (const BYTE *)value.c_str(),
+                   (DWORD)((value.size() + 1) * sizeof(wchar_t)));
+    RegCloseKey(k);
+}
+
 }  // namespace ef11

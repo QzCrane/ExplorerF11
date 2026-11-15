@@ -11,10 +11,14 @@ what does.
 
 | # | Item | Location | Written when | Typical size | `--clean` |
 |---|---|---|---|---|---|
-| 1 | Settings key | `HKCU\Software\ExplorerF11` | you change a setting away from its default | 12 B per value | deleted |
-| 2 | Autostart | `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\ExplorerF11` | you tick *Run at logon* | 154 B | deleted |
+| 1 | Settings key | `HKCU\Software\ExplorerF11` | you change a setting away from its default | 12 B per `DWORD`, ~28 B for `Language` | deleted |
+| 2 | Autostart | `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\ExplorerF11` | you tick *Start with Windows* | 150–200 B (path length) | deleted |
 | 3 | Log file | `%TEMP%\ExplorerF11.log` | you run with `--log` | ~200 B | deleted |
 | 4 | Window marks | `ExplorerF11.Marked` property on Explorer windows | every accelerated window | 0 B (memory) | disappears with Explorer |
+
+The settings key can hold at most three values: `Tabs`, `InitialSweep` and
+`Language`. `--clean` deletes the whole key, so a clean also resets the UI
+language to the system default.
 
 Item 4 never touches disk. It is listed because a user who inspects the process
 deserves to know it exists, and because it is the one piece of state that
@@ -51,7 +55,7 @@ as absent and `--clean` skips it silently — it cannot delete what it cannot op
 | 13 | Old startup flag | `HKCU\...\StartupApproved\Run\ExplorerF11Ultra` | deleted |
 
 These exist only on machines that ran a pre-5.0 build, which used the product
-name *ExplorerF11Ultra*. 6.0 migrates them on first start (the autostart entry is
+name *ExplorerF11Ultra*. 6.x migrates them on first start (the autostart entry is
 rewritten to point at the new exe), and `--clean` removes them.
 
 ## D. The program file
@@ -71,11 +75,13 @@ no cache of our own, and no log unless you ask for one.
 
 ## Why the default is zero
 
-Three rules, enforced in `config.cpp`:
+Four rules, enforced in `config.cpp`:
 
 1. A value is written **only** while it differs from its default.
 2. Setting it back to the default **deletes** the value.
 3. Deleting the last value **deletes the key**.
+4. The UI language follows the same rule with the system language as its default,
+   so picking your own language leaves no value at all.
 
 So a fresh run creates nothing, and "reset everything" is byte-for-byte identical
 to "never installed". Autostart is the same: unticked means no `Run` value at all,
@@ -112,6 +118,5 @@ Remove-Item .\ExplorerF11.exe
 `--clean` also stops a running instance first, and prints a per-category report of
 what it removed. If a category is missing from that report, nothing of that kind
 was there.
-
 The tray window has the same button. It refreshes in place, so the report you are
 reading turns into "clean" without reopening anything.
