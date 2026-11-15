@@ -240,7 +240,7 @@ check_true("报告说明检查范围",
 check("谁写：行数 = 条目数", out.count("谁写："), 14)
 check("位置：行数 = 条目数", out.count("位置："), 14)
 check("说明：行数 = 条目数", out.count("说明："), 14)
-check_true("程序本体注明不是残留", "不是残留" in out or "干净" in out)
+check_true("程序本体注明不是痕迹", "不是痕迹" in out or "干净" in out)
 check_true("Windows 记录单独成段并解释来源",
            "── 二、Windows 自动记录" in out and "这是系统行为" in out, "")
 check_true("可清理标记存在", "· 可清理" in out or clean)

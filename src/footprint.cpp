@@ -380,10 +380,9 @@ std::vector<Footprint> CollectFootprints() {
         x.writer  = T(L"本程序；仅当某个开关被改成非默认值时才写入",
                       L"this program, and only while a setting differs from its default");
         x.where   = std::wstring(L"HKCU\\") + CFG_KEY;
-        x.note    = T(L"可能的值：Tabs、InitialSweep、Language。改回默认值即删除该值；"
-                      L"键内没有任何值时，键本身一并删除",
-                      L"possible values: Tabs, InitialSweep, Language. Resetting one deletes it; "
-                      L"when the key holds nothing, the key itself is deleted");
+        x.note    = T(L"可能的值：Tabs、InitialSweep、Language。改回默认即删该值，键空则删键",
+                      L"possible values: Tabs, InitialSweep, Language; a value is deleted when "
+                      L"it returns to its default");
         x.present = KeyContents(HKEY_CURRENT_USER, CFG_KEY, &d, &x.bytes);
         if (x.present) x.content = d + L" (" + FmtBytes(x.bytes) + L")";
         f.push_back(x);
@@ -411,10 +410,8 @@ std::vector<Footprint> CollectFootprints() {
         x.writer  = T(L"本程序；只有带 --log 参数或排查问题时",
                       L"this program, only with --log");
         x.where   = LogPath();
-        x.note    = T(L"默认不存在。超过 1 MB 会从头重写，不会无限增长。"
-                      L"「清除全部痕迹」删除它",
-                      L"not created by default. Rewritten from scratch past 1 MB, so it cannot "
-                      L"grow without bound. Removed by \"clear all traces\"");
+        x.note    = T(L"默认不存在。超过 1 MB 从头重写，不会无限增长。清理时删除",
+                      L"not created by default; rewritten past 1 MB, so it cannot grow without bound");
         x.present = FileInfo(x.where, &x.bytes);
         if (x.present) x.content = FmtBytes(x.bytes);
         f.push_back(x);
@@ -426,10 +423,9 @@ std::vector<Footprint> CollectFootprints() {
         x.label     = T(L"程序本体", L"Program file");
         x.writer    = T(L"你；这个文件是你放到这里的", L"you; the file is where you put it");
         x.where     = ExePath();
-        x.note      = T(L"这不是痕迹，而是程序本身，清理不会删除它。彻底卸载：先"
-                        L"「清除全部痕迹」，再删除该文件",
-                        L"not residue but the program itself; cleanup never deletes it. "
-                        L"Full uninstall: clear all traces, then delete this file");
+        x.note      = T(L"不是痕迹，是程序本身，清理不会删除它。彻底卸载：清完痕迹再删此文件",
+                        L"not residue but the program; cleanup never deletes it. Uninstall: clear "
+                        L"traces, then delete this file");
         x.deletable = false;
         x.present   = FileInfo(x.where, &x.bytes);
         if (x.present) x.content = FmtBytes(x.bytes);
@@ -442,10 +438,9 @@ std::vector<Footprint> CollectFootprints() {
         x.label   = T(L"启动开关（任务管理器）", L"Startup approval flag (Task Manager)");
         x.writer  = W_WIN;
         x.where   = std::wstring(L"HKCU\\") + APPROVED_KEY + L"\\" + RUN_VALUE;
-        x.note    = T(L"12 字节 REG_BINARY。首字节为奇数表示你在任务管理器里把它关过；"
-                      L"重新勾选自启或清理痕迹时删除该值",
-                      L"12-byte REG_BINARY; an odd first byte means you switched it off in Task "
-                      L"Manager. Deleted when autostart is re-ticked or traces are cleared");
+        x.note    = T(L"12 字节 REG_BINARY。首字节为奇数 = 在任务管理器里关过；清理时删除",
+                      L"12-byte REG_BINARY; an odd first byte = disabled in Task Manager. Deleted "
+                      L"with the traces");
         x.present = OneValue(HKEY_CURRENT_USER, APPROVED_KEY, RUN_VALUE, &d, &x.bytes);
         if (x.present) x.content = d + L" (" + FmtBytes(x.bytes) + L")";
         f.push_back(x);
@@ -457,10 +452,9 @@ std::vector<Footprint> CollectFootprints() {
         x.label   = T(L"托盘图标记录", L"Tray icon bookkeeping");
         x.writer  = W_WIN;
         x.where   = std::wstring(L"HKCU\\") + TRAY_KEY + L"\\{...}";
-        x.note    = T(L"每个托盘图标一条记录，内含约 1–3 KB 的图标快照；"
-                      L"只统计 ExecutablePath 指向本程序的那些",
-                      L"one record per tray icon, each holding a 1-3 KB icon snapshot; "
-                      L"only entries whose ExecutablePath points at this exe are counted");
+        x.note    = T(L"每个托盘图标一条记录（含 1–3 KB 图标快照）；只统计指向本程序的那些",
+                      L"one record per tray icon (a 1-3 KB icon snapshot); only entries pointing "
+                      L"at this exe count");
         x.present = TrayFootprint(&d, &x.bytes) > 0;
         if (x.present) x.content = d + T(L" 条", L" entries") + L" (" + FmtBytes(x.bytes) + L")";
         f.push_back(x);
@@ -511,9 +505,9 @@ std::vector<Footprint> CollectFootprints() {
         x.label   = T(L"预读取记录（Prefetch）", L"Prefetch entry");
         x.writer  = W_WIN;
         x.where   = std::wstring(L"%WINDIR%\\Prefetch\\") + EXE_BASE + L"-*.pf";
-        x.note    = T(L"只有管理员可读。存在即说明系统预读过它；清理会删除，需要管理员权限",
-                      L"readable by administrators only. Its presence means the system has "
-                      L"prefetched it; cleanup deletes it and needs elevation");
+        x.note    = T(L"只有管理员可读。存在即说明系统预读过它；清理需要管理员权限",
+                      L"administrators only; its presence means the system prefetched it. Cleanup "
+                      L"needs elevation");
         x.present = PrefetchFootprint(&d, &x.bytes) > 0;
         if (x.present) x.content = d + L" (" + FmtBytes(x.bytes) + L")";
         f.push_back(x);
@@ -527,12 +521,11 @@ std::vector<Footprint> CollectFootprints() {
         x.writer  = T(L"本程序；写在资源管理器窗口的属性里",
                       L"this program, as a property on explorer windows");
         x.where   = T(L"窗口属性 ExplorerF11.Marked", L"window property ExplorerF11.Marked");
-        x.note    = T(L"不落盘：explorer 重启或注销后自动消失，因此无需也无法清理",
-                      L"never touches disk: gone when explorer restarts or you sign out, "
-                      L"so there is nothing to clean");
+        x.note    = T(L"不落盘：explorer 重启或注销后自动消失，无需清理",
+                      L"never touches disk: gone when explorer restarts or you sign out");
         x.present = n > 0;
         x.deletable = false;
-        if (x.present) x.content = Pad2(n) + T(L" 个窗口", L" window(s)");
+        if (x.present) x.content = Pad2(n) + T(L" 个窗口", n == 1 ? L" window" : L" windows");
         f.push_back(x);
     }
     // ---- 12-14. legacy leftovers ---------------------------------------
@@ -542,9 +535,9 @@ std::vector<Footprint> CollectFootprints() {
         x.label   = T(L"旧版本设置键", L"Legacy settings key");
         x.writer  = T(L"v4 及更早版本", L"v4 and earlier");
         x.where   = std::wstring(L"HKCU\\") + OLD_CFG_KEY;
-        x.note    = T(L"旧版本的产品名是 ExplorerF11Ultra；新版本首次运行会自动迁移并删除它",
-                      L"older builds used the product name ExplorerF11Ultra; the first run of "
-                      L"this version migrates it and deletes it");
+        x.note    = T(L"旧版本的产品名是 ExplorerF11Ultra；新版本首次运行自动迁移并删除",
+                      L"older builds used the name ExplorerF11Ultra; the first run of 6.x migrates "
+                      L"and deletes it");
         x.present = KeyContents(HKEY_CURRENT_USER, OLD_CFG_KEY, &d, &x.bytes);
         if (x.present) x.content = d + L" (" + FmtBytes(x.bytes) + L")";
         f.push_back(x);

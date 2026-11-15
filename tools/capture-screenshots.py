@@ -29,8 +29,8 @@ OUT = os.path.join(ROOT, "docs", "images")
 
 LANG = sys.argv[1] if len(sys.argv) > 1 else "zh"
 SUFFIX = ".zh-CN" if LANG == "zh" else ".en"
-MARGIN = 14                      # room for the drop shadow
-MENU_MARGIN = 2                  # the popup sits on top of whatever is behind it
+MARGIN = 0                       # exact window rect: never photograph what is behind
+MENU_MARGIN = 0
 
 IDM_STATUS = 1010
 TRAY_ID = 1001
@@ -46,6 +46,13 @@ u.FindWindowW.restype = wintypes.HWND
 u.PostMessageW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
 u.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
 u.SetCursorPos.argtypes = [ctypes.c_int, ctypes.c_int]
+u.SetWindowPos.argtypes = [wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int,
+                           ctypes.c_int, ctypes.c_int, ctypes.c_uint]
+
+SWP_NOMOVE = 0x0002
+SWP_NOSIZE = 0x0001
+HWND_TOPMOST = wintypes.HWND(-1)
+HWND_NOTOPMOST = wintypes.HWND(-2)
 
 # Without this the process is DPI-unaware and every rectangle comes back scaled.
 try:
@@ -54,10 +61,32 @@ except OSError:
     pass
 
 
-def grab(hwnd, path, margin=MARGIN):
+def raise_window(hwnd):
+    """Screen captures show whatever is on top, so force the window up first."""
+    u.ShowWindow(hwnd, 9)                                   # SW_RESTORE
+    u.SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE)
+    u.SetForegroundWindow(hwnd)
+    time.sleep(0.45)
+
+
+def visible_rect(hwnd):
+    """The window as the eye sees it.
+
+    GetWindowRect includes the invisible resize border DWM reserves for the drop
+    shadow (about 8 px on each side), and a screen grab of that rectangle picks up
+    whatever is behind it. DWMWA_EXTENDED_FRAME_BOUNDS excludes that border.
+    """
     r = wintypes.RECT()
+    if ctypes.windll.dwmapi.DwmGetWindowAttribute(
+            hwnd, 9, ctypes.byref(r), ctypes.sizeof(r)) == 0 and r.right > r.left:
+        return r
     if not u.GetWindowRect(hwnd, ctypes.byref(r)):
         raise SystemExit("GetWindowRect failed for %r" % hwnd)
+    return r
+
+
+def grab(hwnd, path, margin=MARGIN):
+    r = visible_rect(hwnd)
     box = (r.left - margin, r.top - margin, r.right + margin, r.bottom + margin)
     img = ImageGrab.grab(bbox=box, all_screens=True)
     img.save(path)
@@ -96,7 +125,9 @@ def main():
     if not report:
         raise SystemExit("report window did not open")
     time.sleep(0.7)                      # let the edit control paint the body
+    raise_window(report)
     grab(report, os.path.join(OUT, "footprint-report" + SUFFIX + ".png"))
+    u.SetWindowPos(report, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE)
     u.PostMessageW(report, WM_CLOSE, 0, 0)
     time.sleep(0.4)
 

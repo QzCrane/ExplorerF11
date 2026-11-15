@@ -17,9 +17,12 @@ stealing, no administrator rights, one 292 KB exe.
 > see [docs/RESEARCH.md](docs/RESEARCH.md) for the evidence and the timeline.
 
 <p align="center">
-  <img src="docs/images/tray-menu.zh-CN.png" width="330" alt="tray menu">
-  <img src="docs/images/footprint-report.zh-CN.png" width="430" alt="footprint report">
+  <img src="docs/images/tray-menu.en.png" width="330" alt="tray menu">
+  <img src="docs/images/footprint-report.en.png" width="430" alt="footprint report">
 </p>
+
+<p align="center"><sub>The UI in English; <a href="README.zh-CN.md">README.zh-CN.md</a>
+shows the same screens in Chinese.</sub></p>
 
 ## Why another one
 

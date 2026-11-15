@@ -17,6 +17,8 @@ ExplorerF11 把它自动化：文件夹窗口出现、或者你在窗口里开�
   <img src="docs/images/footprint-report.zh-CN.png" width="430" alt="足迹报告">
 </p>
 
+<p align="center"><sub>界面为中文；英文界面见 <a href="README.md">README.md</a> 的同款截图。</sub></p>
+
 ## 与同类工具的区别
 
 同类工具要么是每 300 ms 轮询一遍窗口的 AutoHotkey 脚本，要么是只处理启动时那一
