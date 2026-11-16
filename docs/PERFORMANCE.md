@@ -469,7 +469,7 @@ build that was held back by it.
 | `screenshots` | 1.9 s | Two app launches and four screen grabs. |
 | `remote` | 2.2-2.4 s | Six `gh` queries, run at once; serially it was 8.0 s. |
 | `gates` | 0.01 s | A fingerprint comparison, by construction. |
-| **dry run to `notes`** | **12.1-12.5 s** | was 135 s, then 18.6 s before the build was split |
+| **dry run to `notes`** | **11.7-12.5 s** | was 135 s, then 18.6 s before the build was split |
 
 A real release adds `commit`, `push`, `ci`, `tag`, `package`, `publish` and
 `verify`. `ci` is the only large one — 35-44 s — and it is a GitHub runner
