@@ -448,8 +448,17 @@ if win:
     check_true("标题正确", "残留报告" in window_text(win), window_text(win))
 
     u.PostMessageW(win, 0x0111, 2002, 0)   # IDC_STATUS_COPY
-    winutil.wait_until(lambda: clipboard_text().startswith("ExplorerF11 "), timeout=5.0)
-    clip = clipboard_text()
+    # Read inside the poll and keep the value that satisfied it. Reading again
+    # afterwards re-took the system clipboard lock for no reason and could
+    # disagree with the read that had just succeeded.
+    seen = {"clip": ""}
+
+    def copied():
+        seen["clip"] = clipboard_text()
+        return seen["clip"].startswith("ExplorerF11 ")
+
+    winutil.wait_until(copied, timeout=5.0)
+    clip = seen["clip"]
     check_true("「复制全部」把报告放进剪贴板", clip.startswith("ExplorerF11 "), str(len(clip)))
 
     print("\n==== 6. 语言切换即时作用于已打开的窗口 ====")
