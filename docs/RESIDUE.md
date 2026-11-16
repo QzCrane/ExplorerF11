@@ -13,8 +13,8 @@ only listed present items could not prove the rest is clean.
 
 | # | Item | Location | Written when | Typical size | `--clean` |
 |---|---|---|---|---|---|
-| 1 | Settings key | `HKCU\Software\ExplorerF11` | a setting leaves its default | 12 B per `DWORD`, ~28 B for `Language` | deleted |
-| 2 | Autostart | `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\ExplorerF11` | *Start with Windows* is ticked | 150–200 B (path length) | deleted |
+| 1 | Settings key | `HKCU\Software\ExplorerF11` | a setting leaves its default | name + data: `Tabs` 14 B, `InitialSweep` 30 B, `Language` 24 B (`zh`/`en`/`ja`/`ko`) or 34 B (`zh-Hant`) | deleted |
+| 2 | Autostart | `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\ExplorerF11` | *Start with Windows* is ticked | `2 × (path length + 15) B`; 116 B for `D:\Project\ExplorerF11\dist\ExplorerF11.exe` | deleted |
 | 3 | Log file | `%TEMP%\ExplorerF11.log` | started with `--log` | ~200 B | deleted |
 | 4 | Window marks | `ExplorerF11.Marked` and `ExplorerF11.Tick` properties on Explorer windows | each accelerated window, once per window regardless of tab count | 0 B (in memory) | disappears with Explorer |
 
@@ -22,6 +22,14 @@ The settings key holds at most `Tabs`, `InitialSweep` and `Language`. `--clean`
 deletes the whole key, which also resets the UI language to the system default.
 `Language` exists only while it differs from the system language; its accepted
 tags are `zh`, `zh-Hant`, `en`, `ja`, `ko`.
+
+Sizes follow `OneValue` and `KeyContents` in `src/residue.cpp`: data bytes
+reported by `RegQueryValueExW` plus the UTF-16 value name with its terminator.
+Fixed per-key registry overhead is excluded, as the report's note says. The
+autostart value holds only a quoted exe path and no arguments, so its size
+depends on the install path, not on the UI language. A non-default `Language`
+does change row 1 and the group-A subtotal — 24 B for a two-letter tag, 34 B for
+`zh-Hant` — and disappears when the system language is selected again.
 
 Row 4 never touches disk. It is listed because the marks survive the tool's own
 exit — a restarted instance can see which windows were already handled — and
