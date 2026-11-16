@@ -253,12 +253,19 @@ def stage_preflight(cfg):
                    "       create it with: python tools/release.py --init-notes"
                    % cfg.notes_src)
 
-    # the version must move forward, and the tag must not exist yet
+    # the version must move forward; the tag must not exist yet. A dry run is
+    # allowed to reuse an already-tagged version, because that is the only way to
+    # rehearse the pipeline against a real release.
     tags = [t for t in git_out("tag", "--list", "v*").split() if t]
     if tags:
         newest = max(tags, key=lambda t: semver(t[1:]))
-        if semver(cfg.version) <= semver(newest[1:]):
-            raise Fail("version %s does not move past the newest tag %s"
+        order, newest_v = semver(cfg.version), semver(newest[1:])
+        if order < newest_v:
+            raise Fail("version %s is older than the newest tag %s"
+                       % (cfg.version, newest))
+        if order == newest_v and not cfg.dry_run:
+            raise Fail("version %s is already tagged as %s; a version is used "
+                       "once. (A --dry-run may reuse it to rehearse.)"
                        % (cfg.version, newest))
     for where, exists in (("local", _tag_exists_local(cfg.tag)),
                           ("remote", _tag_exists_remote(cfg.tag))):
