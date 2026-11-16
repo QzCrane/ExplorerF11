@@ -62,7 +62,9 @@ Get-FileHash .\ExplorerF11-1.0.4-win64.exe -Algorithm SHA256
 ```
 
 The binary is **not code-signed**; SmartScreen will warn on first run. Compare
-the hash with the one on the release page before continuing. Double-click the
+the hash with the one on the release page before continuing.
+[docs/SIGNING.md](docs/SIGNING.md) records why, what a certificate would and
+would not change, and what it costs. Double-click the
 exe, open a folder window, and the tray tooltip will report the acceleration.
 Tray → *Start with Windows* adds one `HKCU\...\Run\ExplorerF11` value with the
 quoted executable path and no arguments.

@@ -4,6 +4,31 @@ A release is a tagged commit, a binary built from that commit, and a checksum
 published alongside it. Once an artefact is public it cannot be corrected in
 place — only superseded — so the checks below happen before the tag, not after.
 
+## Running it
+
+This checklist is executed by `tools/release.py`:
+
+```sh
+make release                  # build, gate, tag, publish, verify
+make release ARGS=--dry-run   # the same, stopping before anything becomes public
+make release ARGS="--from tag"   # re-enter after an interruption
+```
+
+Its stages are `preflight, build, sign, facts, gates, notes, commit, push, ci,
+tag, package, publish, verify, remote, done` — in that order, which is the order
+of the sections below. Each stage is idempotent: it inspects the world before
+acting, so re-running after a failure is safe and `--from` resumes rather than
+repeats. A failure stops the run at that stage and prints the resume command.
+
+Two of those stages exist because of specific incidents. `notes` renders the
+release body from this build's measurements — the hash is substituted, never
+typed — and commits it before the tag, so the tagged tree contains the text the
+release page shows. `remote` compares all four GitHub-only surfaces against
+`release_facts.py` with `tools/check_github_sync.py`.
+
+The rest of this document is why each stage exists and what it refuses to
+accept. Read it before changing the script.
+
 ## 0. One source of truth for the numbers
 
 `tools/release_facts.py` is the only authoritative copy of every number that
@@ -131,6 +156,15 @@ sha256sum dist/ExplorerF11.exe
 `--status` should also be run from this binary. Any test that changed state
 during verification must be followed by a clean run before the release build is
 copied.
+
+Signing, when it is enabled, happens here and not later. A signature rewrites the
+image, so a byte count, KiB figure or SHA-256 measured before it would describe a
+file that is never uploaded. `EF11_SIGN_CMD` receives the image path in
+`EF11_FILE` and must rewrite it in place; the release script fails if the
+security directory is still empty afterwards.
+[docs/SIGNING.md](SIGNING.md) has the costs, the eligibility rules, and the one
+thing a certificate does not buy: a new release still warns until its publisher
+reputation accumulates.
 
 ## 4. Tag and publish
 

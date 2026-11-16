@@ -181,6 +181,52 @@ for dirpath, dirnames, filenames in os.walk(ROOT):
                 stale_hits.append("%s: %s" % (rel, m.group(0)))
 check("无其他文件引用旧版本号", not stale_hits, "; ".join(stale_hits[:3]))
 
+print("\n==== 7. 签名状态 ====")
+# Whether the binary is signed is a published fact, and the documents make a
+# claim about it. When the two disagree, the release page tells the user to
+# expect a warning that will not appear - or the reverse. The check reads the
+# PE security directory rather than trusting a flag, so it describes the file
+# that would be uploaded.
+EXE = os.path.join(ROOT, "dist", "ExplorerF11.exe")
+
+
+def pe_is_signed(path):
+    """True/False for a readable PE, None when there is no binary to inspect."""
+    if not os.path.exists(path):
+        return None
+    import struct
+    with open(path, "rb") as fh:
+        data = fh.read(4096)
+    if len(data) < 0x40 or data[:2] != b"MZ":
+        return None
+    e = struct.unpack_from("<I", data, 0x3C)[0]
+    if data[e:e + 4] != b"PE\0\0":
+        return None
+    opt = e + 24
+    magic = struct.unpack_from("<H", data, opt)[0]
+    dd = opt + (96 if magic == 0x10B else 112)
+    return struct.unpack_from("<I", data, dd + 4 * 8 + 4)[0] > 0
+
+
+UNSIGNED_CLAIMS = {
+    "README.md": r"\bunsigned\b|\bnot code-signed\b",
+    "README.zh-CN.md": r"未做代码签名|未签名",
+    "SECURITY.md": r"\bnot code-signed\b|code-signing certificate",
+}
+signed = pe_is_signed(EXE)
+if signed is None:
+    print("SKIP  dist/ExplorerF11.exe 不存在，跳过签名比对")
+else:
+    print("      binary is %s" % ("signed" if signed else "unsigned"))
+    for doc, pattern in UNSIGNED_CLAIMS.items():
+        claims_unsigned = re.search(pattern, read(doc)) is not None
+        if signed:
+            check("%s 不再声称未签名" % doc, not claims_unsigned,
+                  "binary carries a signature")
+        else:
+            check("%s 声明二进制未签名" % doc, claims_unsigned,
+                  "binary has an empty security directory")
+
 bad = results.count(False)
 print("\n%s  %d/%d 通过" % ("ALL PASS" if not bad else "FAILURES",
                             len(results) - bad, len(results)))

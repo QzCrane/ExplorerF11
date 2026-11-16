@@ -40,7 +40,6 @@ RUN = r"Software\Microsoft\Windows\CurrentVersion\Run"
 APPROVED = r"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run"
 TRAY = r"Control Panel\NotifyIconSettings"
 COMPAT = r"Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Compatibility Assistant\Store"
-MUI = r"Software\Classes\Local Settings\Software\Microsoft\Windows\Shell\MuiCache"
 
 IDM_STATUS = 1010
 IDM_LANG_EN = 1012
@@ -247,7 +246,11 @@ def state():
         "approved": val(APPROVED, "ExplorerF11"),
         "tray": tray_ours(),
         "compat": values_matching(COMPAT, "explorerf11.exe"),
-        "mui": values_matching(MUI, "explorerf11.exe"),
+        # MuiCache is deliberately absent. Explorer writes it the first time it
+        # sees an executable, asynchronously, so it goes 0 -> 2 on a profile that
+        # has never run this build - a change this program did not make and
+        # cannot prevent. Asserting it stayed equal made the gate fail once per
+        # machine, on a clean checkout, for something that is not a defect.
         "log": os.path.exists(log_path()),
     }
 

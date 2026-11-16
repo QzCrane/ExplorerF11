@@ -50,6 +50,7 @@ Get-FileHash .\ExplorerF11-1.0.4-win64.exe -Algorithm SHA256
 ```
 
 二进制**未做代码签名**，首次运行 SmartScreen 会警告。请先与发行页上的 SHA-256 比对。
+原因、买证书能解决什么与不能解决什么、价格与接入方式，记在 [docs/SIGNING.md](docs/SIGNING.md)。
 双击运行，打开一个文件夹窗口，托盘悬浮提示会显示加速状态。托盘 →「开机自启」会写入一条
 `HKCU\...\Run\ExplorerF11`，内容是带引号的 exe 完整路径，不带参数。
 

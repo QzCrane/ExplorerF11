@@ -156,6 +156,28 @@ latest, err = gh_json("api", "repos/%s/releases/latest" % REPO)
 check("是仓库的 Latest release",
       (latest or {}).get("tag_name") == TAG, (latest or {}).get("tag_name", err))
 
+# The body has a version-controlled copy, so "what the release page says" and
+# "what the repository says" cannot drift. The release script renders this file
+# from the build's measurements and commits it before tagging.
+notes_path = os.path.join(ROOT, "docs", "release-notes", F.VERSION + ".md")
+if os.path.exists(notes_path):
+    with open(notes_path, encoding="utf-8") as fh:
+        local_body = fh.read().replace("\r\n", "\n").strip()
+    remote_body = body.replace("\r\n", "\n").strip()
+    check("仓库 docs/release-notes/%s.md 等于线上正文" % F.VERSION,
+          local_body == remote_body,
+          "" if local_body == remote_body
+          else "%d vs %d bytes" % (len(local_body), len(remote_body)))
+    if local_body != remote_body:
+        import difflib
+        diff = list(difflib.unified_diff(local_body.splitlines(),
+                                         remote_body.splitlines(),
+                                         "repository", "github", n=0, lineterm=""))
+        for line in diff[:12]:
+            print("      " + line)
+else:
+    note("仓库无 docs/release-notes/%s.md，跳过正文比对" % F.VERSION)
+
 print("==== 3. 资产 ====")
 names = sorted(a.get("name", "") for a in assets)
 check("资产恰好是 exe + 校验文件", names == sorted([F.ASSET, F.CHECKSUM]), ", ".join(names))

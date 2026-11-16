@@ -103,6 +103,9 @@ The binary is **not code-signed**, so SmartScreen warns on first run. That is
 expected for an unsigned single-file utility: the published hash is the
 integrity check that replaces a signature. Building from source is the stronger
 option and takes one command — see [README](README.md#build).
+[docs/SIGNING.md](docs/SIGNING.md) has the numbers behind that decision, and
+states the one thing a certificate would not fix: a new release still warns
+until its publisher reputation accumulates.
 
 A hash proves the file matches the release page. It does not prove the release
 page belongs to this project; check that you followed a link from the
