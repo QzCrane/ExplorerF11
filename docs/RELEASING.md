@@ -14,11 +14,12 @@ make release ARGS=--dry-run   # the same, stopping before anything becomes publi
 make release ARGS="--from tag"   # re-enter after an interruption
 ```
 
-Its stages are `preflight, build, sign, facts, gates, notes, commit, push, ci,
-tag, package, publish, verify, remote, done` — in that order, which is the order
-of the sections below. Each stage is idempotent: it inspects the world before
-acting, so re-running after a failure is safe and `--from` resumes rather than
-repeats. A failure stops the run at that stage and prints the resume command.
+Its stages are `preflight, build, sign, facts, gates, screenshots, notes,
+commit, push, ci, tag, package, publish, verify, remote, done` — in that order,
+which is the order of the sections below. Each stage is idempotent: it inspects
+the world before acting, so re-running after a failure is safe and `--from`
+resumes rather than repeats. A failure stops the run at that stage and prints
+the resume command.
 
 Two of those stages exist because of specific incidents. `notes` renders the
 release body from this build's measurements — the hash is substituted, never

@@ -258,6 +258,21 @@ workflow = read_local(".github/workflows/build.yml")
 check("CI 版本断言 = " + F.VERSION,
       ('"ExplorerF11 %s"' % F.VERSION) in workflow, F.VERSION)
 
+print("==== 7. 仓库主题 ====")
+# Topics live outside git too, and docs/RELEASING.md gives the command that sets
+# them. Nothing checked that the command had ever been run, or that a later edit
+# dropped one. The set below is the published one; additions are allowed,
+# removals are not.
+EXPECTED_TOPICS = {"cpp", "cpp23", "file-explorer", "i18n", "mingw-w64",
+                   "performance", "shell-hook", "tray-icon", "win32",
+                   "windows-11"}
+topics, err = gh_json("api", "repos/%s/topics" % REPO)
+names = set((topics or {}).get("names") or [])
+missing = sorted(EXPECTED_TOPICS - names)
+check("主题包含全部 %d 项" % len(EXPECTED_TOPICS), not missing,
+      ("missing: " + ", ".join(missing)) if missing else
+      ("%d topics" % len(names)))
+
 passed = sum(1 for r in results if r)
 total = len(results)
 print()

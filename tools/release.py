@@ -33,6 +33,7 @@ Exit codes: 0 published and verified, 1 a stage failed (the log names it),
 """
 
 import argparse
+import datetime
 import hashlib
 import importlib
 import json
@@ -54,6 +55,7 @@ STAGES = (
     "sign",        # optional Authenticode signing, before anything is measured
     "facts",       # refresh release_facts.py + measurement.json from this build
     "gates",       # make test - all thirteen, on this exact tree
+    "screenshots", # documentation captures; they carry the version in a header
     "notes",       # render the body from this build's numbers, verify it
     "commit",      # commit anything the stages above changed
     "push",        # push main
@@ -171,10 +173,11 @@ def rel(*parts):
 
 
 class Ctx(object):
-    def __init__(self, version, dry_run):
+    def __init__(self, version, dry_run, skip_screenshots=False):
         self.version = version
         self.tag = "v" + version
         self.dry_run = dry_run
+        self.skip_screenshots = skip_screenshots
         self.sha256 = None
         self.size = None
         self.signed = False
@@ -247,6 +250,12 @@ def stage_preflight(cfg):
                      read("CHANGELOG.md")):
         raise Fail("CHANGELOG.md has no `## %s - YYYY-MM-DD` heading"
                    % cfg.version)
+    released = re.search(r"(?m)^## %s - (\d{4}-\d{2}-\d{2})$"
+                         % re.escape(cfg.version), read("CHANGELOG.md")).group(1)
+    today = datetime.date.today().isoformat()
+    if released != today:
+        note("WARNING: the CHANGELOG dates this release %s; today is %s. "
+             "Correct if it shipped later than planned." % (released, today))
 
     if not os.path.exists(os.path.join(ROOT, cfg.notes_src)):
         raise Fail("no release notes at %s\n"
@@ -368,6 +377,31 @@ def stage_gates(cfg):
     """The full suite, on the tree that will be tagged."""
     run(["make", "test"], timeout=1800)
     note("thirteen gates passed on this tree")
+
+
+def stage_screenshots(cfg):
+    """Regenerate the documentation captures.
+
+    They are photographs of the running binary and their headers carry the
+    version number, so a release that skips this ships documentation showing the
+    previous version. The step was a sentence in RELEASING.md until now, which
+    is exactly the kind of instruction that gets skipped at 1 a.m.
+    """
+    if cfg.skip_screenshots:
+        note("--skip-screenshots: docs/images left unchanged")
+        return
+    script = os.path.join(ROOT, "tools", "capture-screenshots.py")
+    if not os.path.exists(script):
+        note("no capture-screenshots.py; nothing to regenerate")
+        return
+    for lang in ("zh", "en"):
+        run(["python", "tools/capture-screenshots.py", lang], timeout=600)
+    changed = git_out("status", "--porcelain", "--", "docs/images")
+    if changed:
+        note("regenerated: " + ", ".join(l.split()[-1] for l in
+                                         changed.splitlines()))
+    else:
+        note("captures came out byte-identical")
 
 
 def stage_notes(cfg):
@@ -601,6 +635,7 @@ HANDLERS = {
     "sign": stage_sign,
     "facts": stage_facts,
     "gates": stage_gates,
+    "screenshots": stage_screenshots,
     "notes": stage_notes,
     "commit": stage_commit,
     "push": stage_push,
@@ -782,9 +817,11 @@ def main(argv=None):
                         help="stop after this stage")
     parser.add_argument("--init-notes", action="store_true",
                         help="write the release-notes skeleton and stop")
+    parser.add_argument("--skip-screenshots", action="store_true",
+                        help="leave docs/images alone (they carry the version)")
     args = parser.parse_args(argv)
 
-    cfg = Ctx(args.version or F.VERSION, args.dry_run)
+    cfg = Ctx(args.version or F.VERSION, args.dry_run, args.skip_screenshots)
 
     if args.init_notes:
         path = os.path.join(ROOT, cfg.notes_src)
