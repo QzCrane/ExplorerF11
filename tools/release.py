@@ -69,6 +69,14 @@ STAGES = (
     "done",
 )
 
+# A dry run rehearses every stage that is local and reversible: it builds,
+# gates, captures and renders the notes. It stops at the first stage that would
+# leave a mark. It used to stop only at `publish`, so a rehearsal committed the
+# regenerated screenshots, pushed them, and waited 48 s for CI before dying on
+# the tag - a dry run that wrote to main.
+DRY_STAGES = frozenset(("preflight", "build", "sign", "facts", "gates",
+                        "screenshots", "notes"))
+
 STATE = os.path.join(ROOT, "dist", ".release-state.json")
 LATEST_MARK = re.compile(r"(?m)^## (\d+\.\d+\.\d+) - ")
 
@@ -463,6 +471,9 @@ def stage_notes(cfg):
 
 def stage_commit(cfg):
     """Commit whatever the stages above changed, if anything."""
+    if cfg.dry_run:
+        note("dry run: not committing")
+        return
     run(["git", "add", "-A"])
     staged = git_out("diff", "--cached", "--name-only")
     if not staged:
@@ -477,6 +488,9 @@ def stage_commit(cfg):
 
 def stage_push(cfg):
     head = git_out("rev-parse", "HEAD")
+    if cfg.dry_run:
+        note("dry run: would push " + head[:7])
+        return
     upstream = git_out("rev-parse", "origin/main")
     if head == upstream:
         note("already pushed")
@@ -488,6 +502,9 @@ def stage_push(cfg):
 def stage_ci(cfg):
     """Wait for the run on this exact commit; a tag on red CI ships an untested build."""
     head = git_out("rev-parse", "HEAD")
+    if cfg.dry_run:
+        note("dry run: would wait for CI on " + head[:7])
+        return
     deadline = time.time() + 45 * 60
     warned = False
     while time.time() < deadline:
@@ -516,13 +533,26 @@ def stage_ci(cfg):
 
 
 def stage_tag(cfg):
+    head = git_out("rev-parse", "HEAD")
+    if cfg.dry_run:
+        note("dry run: would tag " + head[:7] + " as " + cfg.tag)
+        return
     if _tag_exists_local(cfg.tag):
         target = git_out("rev-parse", cfg.tag + "^{commit}")
-        if target != git_out("rev-parse", "HEAD"):
-            raise Fail("tag %s exists and points at %s, not HEAD; a published "
-                       "tag is moved only under the rule in docs/RELEASING.md"
-                       % (cfg.tag, target[:7]))
-        note("tag %s already points at HEAD" % cfg.tag)
+        if target != head:
+            # The rule check_github_sync.py enforces, in one place: a tag may
+            # sit behind HEAD while release plumbing, screenshots and prose
+            # follow it. Only src/ moving invalidates the tagged tree.
+            moved = git_out("diff", "--name-only", cfg.tag + "..HEAD", "--", "src")
+            if moved.strip():
+                raise Fail("tag %s is behind HEAD and src/ changed since (%s); a "
+                           "published tag is not moved for build changes - cut the "
+                           "next version instead"
+                           % (cfg.tag, ", ".join(moved.split())))
+            note("tag %s stays at %s; src/ is unchanged since"
+                 % (cfg.tag, target[:7]))
+        else:
+            note("tag %s already points at HEAD" % cfg.tag)
     else:
         run(["git", "tag", "-a", cfg.tag, "-m", "ExplorerF11 " + cfg.version])
         note("created " + cfg.tag)
@@ -886,10 +916,10 @@ def main(argv=None):
     for name in STAGES:
         if args.start and STAGES.index(name) < STAGES.index(args.start):
             continue
-        if name == "publish" and args.dry_run:
-            LOG.head("dry run stopped before publish")
-            note("build, facts, gates and notes all passed.")
-            note("Nothing was committed, tagged, uploaded or published.")
+        if args.dry_run and name not in DRY_STAGES:
+            LOG.head("dry run stopped before " + name)
+            note("build, facts, gates, screenshots and notes all passed.")
+            note("Nothing was committed, pushed, tagged, uploaded or published.")
             report_timings(timings)
             LOG.flush()
             return 0
