@@ -26,7 +26,9 @@ Two structural changes make them impossible here:
 
 Stages are idempotent and resumable. `--from <stage>` re-enters at a stage after
 an interruption; each one inspects the world before acting, so re-running is
-always safe. `--dry-run` stops before the first mutation of anything public.
+always safe. `--dry-run` runs everything local and reversible — build, facts,
+gates, captures, notes — then stops before `commit`. Nothing is committed,
+pushed, tagged or published, and the tree is left as the run found it.
 
 Exit codes: 0 published and verified, 1 a stage failed (the log names it),
 2 the command line or the checkout is not releasable.

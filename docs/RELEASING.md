@@ -10,7 +10,7 @@ This checklist is executed by `tools/release.py`:
 
 ```sh
 make release                  # build, gate, tag, publish, verify
-make release ARGS=--dry-run   # the same, stopping before anything becomes public
+make release ARGS=--dry-run   # build, gate and capture, then stop before commit
 make release ARGS="--from tag"   # re-enter after an interruption
 ```
 

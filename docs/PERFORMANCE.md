@@ -376,8 +376,10 @@ evidence, not opinion.
 
 ## The release pipeline
 
-`make release` is sixteen stages. It took 135 s, of which about 8 s was work:
-the same thirteen gates ran twice, and the suites slept.
+`make release` is sixteen stages. It took 135 s; a local rehearsal of it now
+takes 12.6 s. Three things were being paid for without buying anything: the same
+thirteen gates ran twice, the suites slept, and the compiler worked on one file
+at a time.
 
 ### The gates ran twice
 
@@ -433,17 +435,41 @@ second to tick *before* posting the command (at most 0.5 s, average 0.5) and
 then polls; the 1.2 s it replaced was slower and only passed when the rebuild
 happened to land in a different second.
 
+### The build compiled serially
+
+The release build handed `src/*.cpp` and `src/app.rc` to a single `g++` command,
+which compiles the four units one after another and then links. Measured, that
+was 6.3 s of compilation and 0.12 s of linking — the link was never the expensive
+part, and `make -j4` on the one-shot command changed nothing because the command
+itself is one job.
+
+Four object files give make four parallel jobs:
+
+| | Before | After |
+|---|---|---|
+| `make -B` | 6.45 s | 2.6-3.1 s |
+| `make`, one unit edited | 6.45 s | 2.05 s |
+
+The bytes do not move. `g++ -c` per unit plus a separate link produces the digest
+on the 1.0.4 release page (`477d3fb6…`), because nothing here depends on
+cross-unit optimisation.
+
+This document claimed the opposite until now — that splitting the units "would
+change the binary" — and that claim is why the build stayed serial. It is
+corrected here rather than deleted, because the numbers above were read from a
+build that was held back by it.
+
 ### What is left, and why it stays
 
 | Stage | Time | Why it cannot be cheaper |
 |---|---|---|
-| `build` | 7.87 s | A static-CRT release build from scratch. `make -j4` measures the same 7.7 s: the dominant step is the single link, and splitting the translation units to parallelise the compiles would change the binary — which is pinned by the hash on the release page. |
-| `facts` | 5.0-5.7 s | Thirteen processes. The suites themselves are the floor. |
-| `preflight` | 3.08 s | Three network round trips: `git fetch`, `git ls-remote`, `gh auth status`. |
-| `screenshots` | 1.94 s | Two app launches and four screen grabs. |
-| `remote` | 2.4 s | Six `gh` queries, run at once; serially it was 8.0 s. |
+| `build` | 2.6-3.1 s | Four parallel compiles and a 0.12 s link. A link is the floor: one pass over every object, no work to overlap. |
+| `facts` | 4.9-5.7 s | Thirteen processes. The suites themselves are the floor. |
+| `preflight` | 3.0-4.0 s | Three network round trips: `git fetch`, `git ls-remote`, `gh auth status`. |
+| `screenshots` | 1.7-1.9 s | Two app launches and four screen grabs. |
+| `remote` | 2.2-2.4 s | Six `gh` queries, run at once; serially it was 8.0 s. |
 | `gates` | 0.01 s | A fingerprint comparison, by construction. |
-| **dry run to `notes`** | **18.6 s** | was 135 s |
+| **dry run to `notes`** | **12.6 s** | was 135 s, then 18.6 s before the build was split |
 
 A real release adds `commit`, `push`, `ci`, `tag`, `package`, `publish` and
 `verify`. `ci` is the only large one — 35-44 s — and it is a GitHub runner
@@ -459,9 +485,9 @@ Two rejected optimisations, with the number that settles them:
   would test the tests. The suite is 6 s; the risk is a flaky gate in the release
   path, which is the worst place to have one.
 - **Cache the build against the tree fingerprint and the compiler version**
-  (would save 7.9 s): the cache would be correct in the common case, and in the
+  (would save 3.1 s): the cache would be correct in the common case, and in the
   uncommon case it would ship a binary that no build on this machine produced.
-  The release contract is "built from scratch", and 7.9 s is a cheap way to keep
+  The release contract is "built from scratch", and 3.1 s is a cheap way to keep
   it.
 
 The pipeline prints every stage's time and share at the end of a run and in
