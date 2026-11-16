@@ -441,8 +441,16 @@ happened to land in a different second.
 | `facts` | 5.0-5.7 s | Thirteen processes. The suites themselves are the floor. |
 | `preflight` | 3.08 s | Three network round trips: `git fetch`, `git ls-remote`, `gh auth status`. |
 | `screenshots` | 1.94 s | Two app launches and four screen grabs. |
+| `remote` | 2.4 s | Six `gh` queries, run at once; serially it was 8.0 s. |
 | `gates` | 0.01 s | A fingerprint comparison, by construction. |
 | **dry run to `notes`** | **18.6 s** | was 135 s |
+
+A real release adds `commit`, `push`, `ci`, `tag`, `package`, `publish` and
+`verify`. `ci` is the only large one — 35-44 s — and it is a GitHub runner
+building the same source with MSVC, which is a second toolchain asserting
+something this machine cannot: that the code compiles under the compiler most
+users would use. Nothing local can shorten it, so the pipeline prints it as its
+own stage instead of hiding it inside a total.
 
 Two rejected optimisations, with the number that settles them:
 
