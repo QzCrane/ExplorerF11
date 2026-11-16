@@ -1,5 +1,9 @@
 # ExplorerF11
 
+<p align="center">
+  <img src="docs/images/app-icon.png" width="96" alt="ExplorerF11 图标">
+</p>
+
 [![build](https://github.com/QzCrane/ExplorerF11/actions/workflows/build.yml/badge.svg)](https://github.com/QzCrane/ExplorerF11/actions/workflows/build.yml)
 [![release](https://img.shields.io/github/v/release/QzCrane/ExplorerF11?sort=semver)](https://github.com/QzCrane/ExplorerF11/releases/latest)
 [![license](https://img.shields.io/github/license/QzCrane/ExplorerF11)](LICENSE)

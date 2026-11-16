@@ -6,6 +6,8 @@
 Writes src/ExplorerF11.ico and src/ExplorerF11-paused.ico. Both carry every
 size Windows asks for (16 through 256), which is what keeps the tray icon sharp
 at 100 %, 150 % and 200 % scaling instead of being a stretched 16 px bitmap.
+Also writes docs/images/app-icon.png: GitHub does not render .ico inline in a
+README, so the documentation needs a PNG frame from the same master.
 
 The mark is a flat single-colour lightning bolt on a transparent background - no
 tile, no plate. That is the shape of the icons already sitting in the Windows 11
@@ -49,7 +51,17 @@ def write(path, m):
     print(f"{path}  {path.stat().st_size:,} bytes  sizes {SIZES}")
 
 
+def write_png(path, m, size=128):
+    """One transparent PNG for the README, from the same master as the .ico."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    m.resize((size, size), Image.LANCZOS).save(path, format="PNG", optimize=True)
+    print(f"{path}  {path.stat().st_size:,} bytes  {size}x{size} PNG")
+
+
 if __name__ == "__main__":
     root = pathlib.Path(__file__).resolve().parent.parent
-    write(root / "src" / "ExplorerF11.ico", build(RUNNING))
-    write(root / "src" / "ExplorerF11-paused.ico", build(PAUSED))
+    running = build(RUNNING)
+    paused = build(PAUSED)
+    write(root / "src" / "ExplorerF11.ico", running)
+    write(root / "src" / "ExplorerF11-paused.ico", paused)
+    write_png(root / "docs" / "images" / "app-icon.png", running)

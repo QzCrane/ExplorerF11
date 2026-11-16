@@ -145,7 +145,10 @@ and the mutex is released before spawning, so no second copy can start.
 ## Tray icon and tooltip
 
 Both icons are nine-frame multi-size resources (16 through 256 px), regenerated
-from geometry by `tools/make-icons.py`. The tray loads `SM_CXSMICON`, the report
+from geometry by `tools/make-icons.py`. The same script writes
+`docs/images/app-icon.png` from the running master: GitHub does not render `.ico`
+inline in a README, so the documentation needs a PNG frame rather than a
+hand-placed image that can drift from the shipped icon. The tray loads `SM_CXSMICON`, the report
 window `SM_CXICON` and `SM_CXSMICON`, so Windows selects a real frame at each
 scaling level instead of stretching one. Without the resource all four surfaces
 showed the generic document icon.
