@@ -33,7 +33,15 @@ debug: CXXFLAGS := -std=c++23 -O0 -g -Wall -Wextra -municode -D_DEBUG
 debug: LDFLAGS  := -municode -static -static-libgcc -static-libstdc++
 debug: clean $(OUT)
 
-.PHONY: refresh-facts bench
+.PHONY: refresh-facts bench check-remote
+
+# The repository's prose is gated locally, but four surfaces exist only on
+# GitHub: the tag's tree (what "Browse files" and the source archive show), the
+# release body, the uploaded assets, and the repository description. Each has
+# drifted at least once and each time a person found it. This checks them
+# against release_facts.py. Needs an authenticated `gh`; not part of `test`.
+check-remote:
+	python tools/check_github_sync.py
 
 # Diagnostic micro-benchmark of the behaviour hot paths. NOT a gate: it is a
 # reproducible measuring stick, not a pass/fail check. Run on demand to back a

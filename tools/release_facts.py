@@ -27,8 +27,8 @@ ASSERTIONS = 369
 
 SIZE_KIB = 411
 # Private bytes move by tens of KB between runs: 1.76-1.77 MB observed for this
-# build, with the detailed audit sample at 1808 KB. The gate's ceiling stays at
-# 2 MB so a refresh that drifts a little still passes, while a real regression
+# build, with the release sample at 1812 KB and 1.77 MB. The gate's ceiling stays
+# at 2 MB so a refresh that drifts a little still passes, while a real regression
 # (the 2.3 MB icon decoder was one) does not.
 PRIVATE_CEIL_MB = 2
 HANDLES = 129

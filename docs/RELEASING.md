@@ -195,7 +195,49 @@ sha256sum ExplorerF11-<version>-win64.exe
 ```
 
 The hash must match both `SHA256SUMS.txt` and the value in the notes; the
-version must match the tag. Fix a typo by editing the release notes, never the
-tag. A bad binary gets a new patch version, with the old release marked as
+version must match the tag. A typo in the notes is fixed by editing the notes.
+
+A bad binary gets a new patch version, with the old release marked as
 superseded rather than deleted — a deleted release teaches nobody what
 happened.
+
+The tag itself is re-pointed in exactly one case: documentation-only commits
+landed after the release and the tagged tree now contradicts the notes. The
+test is that the build inputs are byte-identical between the two commits:
+
+```sh
+git diff --stat vX.Y.Z HEAD -- src tools/*.cpp Makefile build.bat .github
+```
+
+Empty output means the shipped binary is still exactly what that tree builds, so
+moving the tag changes no artefact, only prose that was wrong. Re-create the tag
+as annotated and force-push it, then state in the tag message why it moved:
+
+```sh
+git tag -f -a vX.Y.Z -m "ExplorerF11 X.Y.Z (re-pointed: documentation-only fix)"
+git push --force origin vX.Y.Z
+```
+
+Anything that touches `src/`, the build files or the workflows is not a
+re-point, it is a new release. Never upload a different binary under an existing
+tag.
+
+## 6. Confirm nothing on GitHub drifted
+
+Four facts live only on GitHub and are invisible to `git status`: the tag's tree,
+the release body, the uploaded assets and the repository description. All four
+have drifted before — a body copied from the previous release, a tag left one
+documentation commit behind, a description still quoting an old binary size —
+and each time a reader found it first. Check them mechanically:
+
+```sh
+make check-remote        # python tools/check_github_sync.py
+```
+
+It fails unless the tag equals `HEAD`, the asset's digest matches
+`SHA256SUMS.txt`, the notes quote this build's version, byte count and
+assertion count, and the description quotes this build's size. Run it before
+announcing a release and again after any commit that lands once one is
+published; a post-release commit will make it fail on the tag check, which is
+the signal to either re-point the tag as described above or cut a patch
+release.
