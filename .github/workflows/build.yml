@@ -71,10 +71,12 @@ jobs:
           findstr /C:"Re-accelerate the window on new tabs" dist\menu-en.txt >nul || exit /b 1
           rem The five languages must all be selectable, and each name is the
           rem endonym from i18n.h: LangName(), identical in every UI language.
-          findstr /C:"简体中文" dist\menu-en.txt >nul || exit /b 1
-          findstr /C:"繁體中文" dist\menu-en.txt >nul || exit /b 1
-          findstr /C:"日本語" dist\menu-en.txt >nul || exit /b 1
-          findstr /C:"한국어" dist\menu-en.txt >nul || exit /b 1
+          rem Asserted in Python with \u escapes, never as literals: this file is
+          rem a .cmd written by the runner and read by cmd.exe in the OEM code
+          rem page, so a CJK literal here would be mojibake before findstr ever
+          rem sees it. ASCII-only is what makes the check portable.
+          python -c "import io,sys; d=io.open(r'dist\menu-en.txt',encoding='utf-8').read(); need=[u'\u7b80\u4f53\u4e2d\u6587',u'\u7e41\u9ad4\u4e2d\u6587',u'\u65e5\u672c\u8a9e',u'\ud55c\uad6d\uc5b4']; sys.exit(0 if all(n in d for n in need) else 1)"
+          if errorlevel 1 exit /b 1
 
           rem The Chinese dump must not carry the English labels; that absence is
           rem what proves --lang really re-localised the menu.
