@@ -8,6 +8,7 @@
 [![release](https://img.shields.io/github/v/release/QzCrane/ExplorerF11?sort=semver)](https://github.com/QzCrane/ExplorerF11/releases/latest)
 [![license](https://img.shields.io/github/license/QzCrane/ExplorerF11)](LICENSE)
 ![platform](https://img.shields.io/badge/platform-Windows%2011%20x64-0078D4)
+![language](https://img.shields.io/badge/language-C%2B%2B23-00599C)
 
 一个常驻托盘的 Windows 11 资源管理器加速工具：给新打开的文件夹窗口投递一次 F11
 往返。事件驱动，单文件 370 KiB 未签名 exe，默认配置下不写注册表。[English](README.md)。

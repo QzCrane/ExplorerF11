@@ -1,7 +1,7 @@
 {
   "assertions_total": 323,
   "handles": 135,
-  "private_mb": "1.86",
+  "private_mb": "1.85",
   "size_kib": 370,
   "suite_assertions": {
     "test_icons.py": 25,

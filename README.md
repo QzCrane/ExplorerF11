@@ -8,6 +8,7 @@
 [![release](https://img.shields.io/github/v/release/QzCrane/ExplorerF11?sort=semver)](https://github.com/QzCrane/ExplorerF11/releases/latest)
 [![license](https://img.shields.io/github/license/QzCrane/ExplorerF11)](LICENSE)
 ![platform](https://img.shields.io/badge/platform-Windows%2011%20x64-0078D4)
+![language](https://img.shields.io/badge/language-C%2B%2B23-00599C)
 
 A tray utility that sends an F11 round trip to newly opened Windows 11 Explorer
 windows. Event-driven, one unsigned 370 KiB executable, no registry writes under

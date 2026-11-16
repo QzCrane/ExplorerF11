@@ -135,9 +135,11 @@ contains("RELEASING checksum 名称", "docs/RELEASING.md", F.CHECKSUM)
 contains("SECURITY 资产名", "SECURITY.md", F.ASSET)
 contains("SECURITY checksum 名称", "SECURITY.md", F.CHECKSUM)
 
-check("C++ 标签为 %s" % F.CPP_LABEL,
-      read("README.md").count("C++23") >= 1
-      and read("README.zh-CN.md").count("C++23") >= 1)
+BADGE = "language-C%2B%2B23-00599C" if F.CPP_LABEL == "C++23" else None
+for rel in ("README.md", "README.zh-CN.md"):
+    check("%s 语言标签为 %s" % (rel, F.CPP_LABEL),
+          (BADGE is not None and BADGE in read(rel))
+          or ("C++%s" % F.CPP_LABEL[3:]) in read(rel), F.CPP_LABEL)
 
 print("\n==== 5. CHANGELOG 当前段 ====")
 current = re.search(r"(?ms)^## %s - .*?(?=^## |\Z)" % re.escape(F.VERSION),
