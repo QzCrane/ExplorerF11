@@ -114,7 +114,7 @@ installed 26100 build on a 26300 system is exactly that case.
 - `PostMessage` F11 changes the style and rectangle as quoted above; a second
   press restores them exactly.
 - End-to-end log: `started (tab hook ok)` → `accelerated: drivers - File Explorer`.
-- Steady state shortly after start-up: 1.76 MB private, 129 handles, 4 threads
+- Steady state shortly after start-up: 1.77 MB private, 129 handles, 4 threads
   (three `TpWorkerFactory` helpers settle out after roughly 45 s idle), 0.03 s
   cumulative CPU per two minutes.
 - Registry policy: zero writes on a default run, values deleted when returned

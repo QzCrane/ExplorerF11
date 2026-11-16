@@ -22,7 +22,7 @@ program does: the tray, the menu, the report and the CLI print the same bytes.
   uncompressed DIB, where no decoder is involved. The large sizes stay PNG:
   Explorer decodes those in its own process when it draws a thumbnail, so they
   cost this program nothing and keep the file small. Measured on the tray:
-  private commit 1912 -> 1808 KB, working set 11264 -> 10352 KB (-8%), and
+  private commit 1912 -> 1812 KB, working set 11264 -> 10384 KB (-8%), and
   `WindowsCodecs` is no longer in the module list. The pixels are identical -
   `LoadImageW` on the old and new files produces the same 16x16 BGRA bytes,
   checked by hash for both icons and both states. The cost is 41 KiB of disk
@@ -33,7 +33,7 @@ program does: the tray, the menu, the report and the CLI print the same bytes.
   write a file whose pixels differ. Regenerating from geometry reproduces the
   shipped bytes exactly.
 - **What the memory audit could not improve, and why.** An empty Win32 message
-  loop built with these flags already commits 1584 KB, so 87% of the 1808 KB is
+  loop built with these flags already commits 1584 KB, so 87% of the 1812 KB is
   the floor of a static-CRT program plus the DLLs the loader brings; the tray's
   own share is ~180 KB and the program's data is ~36 KB. `msctf.dll` (1.4 MB)
   appears because the program owns an ordinary top-level window, and the

@@ -264,10 +264,10 @@ Task Manager shows and is dominated by shared DLL pages.
 | + tray icon (`Shell_NotifyIconW`) | 1764 KB | 8.9 MB |
 | + one registry-and-window pass | 1776 KB | 9.0 MB |
 | shipped tray process, before this release | 1912 KB | 11.3 MB |
-| **shipped tray process, now** | **1808 KB** | **10.4 MB** |
+| **shipped tray process, now** | **1812 KB** | **10.4 MB** |
 | after opening the report window once | ~2390 KB | 17.3 MB |
 
-The floor is the headline: **1584 of 1808 KB is what an empty program built with
+The floor is the headline: **1584 of 1812 KB is what an empty program built with
 these flags already commits.** That is the static CRT, the loader's private
 copy-on-write pages, and the DLLs the process cannot exist without. The tray adds
 ~180 KB, a full registry pass adds ~8 KB, and this program's own data - the icon
@@ -284,8 +284,8 @@ decodes those in its own process.
 
 | | before | after |
 |---|---|---|
-| private | 1912 KB | **1808 KB** |
-| working set | 11264 KB | **10352 KB** (−8%) |
+| private | 1912 KB | **1812 KB** |
+| working set | 11264 KB | **10384 KB** (−8%) |
 | `WindowsCodecs` in module list | yes | **no** |
 | disk | 370 KiB | 411 KiB (+41) |
 
@@ -294,7 +294,7 @@ loads the old and the new file, reads the bitmap back out of the HICON with
 `GetDIBits`, and hashes it. Both icons, both states, same hash.
 
 The disk cost is real and worth stating plainly: a DIB is bigger than the PNG it
-replaces. 38 KiB of icon data buys 104 KB of commit and 912 KB of working set;
+replaces. 38 KiB of icon data buys 100 KB of commit and 880 KB of working set;
 the other 3 KiB of the file is code: the maintained set, and the report's
 button row measured from its labels instead of a fixed width.
 
