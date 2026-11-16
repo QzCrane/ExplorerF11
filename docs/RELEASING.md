@@ -257,29 +257,25 @@ A bad binary gets a new patch version, with the old release marked as
 superseded rather than deleted — a deleted release teaches nobody what
 happened.
 
-The tag itself is re-pointed in exactly one case: commits landed after the
-release and the tagged tree now contradicts the notes. The test is not which
-files changed but whether the tree still produces the published binary, byte for
-byte:
+The tag stays where it is. Commits that land after a release are normal — prose,
+screenshots, CI tweaks, build plumbing — and `make check-remote` accepts them.
+Moving a public tag is a cost every existing clone has to reconcile, and v1.0.4
+paid it five times for changes that were never part of the binary.
+
+The source tree is the exception. If `src/` changes after the tag, the tagged
+tree no longer holds the code the notes describe: that is a new patch version
+under its own tag, not a re-point.
+
+A re-point is reserved for `src/` moving without the binary moving — a comment,
+a rename with no codegen effect. Prove it with the digest first:
 
 ```sh
-make -B && sha256sum dist/ExplorerF11.exe
-```
-
-If that digest equals the one in the release notes and `SHA256SUMS.txt`, no
-artefact moved and the commits were prose; the tag can follow them. If it
-differs, they were build changes and this is a new release, not a re-point.
-Re-create the tag as annotated and force-push it, stating in the message why it
-moved:
-
-```sh
-git tag -f -a vX.Y.Z -m "ExplorerF11 X.Y.Z (re-pointed: documentation-only fix)"
+make -B && sha256sum dist/ExplorerF11.exe   # must equal the published digest
+git tag -f -a vX.Y.Z -m "ExplorerF11 X.Y.Z (re-pointed: src/ comment only)"
 git push --force origin vX.Y.Z
 ```
 
-Anything that touches `src/`, the build files or the workflows is not a
-re-point, it is a new release. Never upload a different binary under an existing
-tag.
+Never upload a different binary under an existing tag.
 
 ## 6. Confirm nothing on GitHub drifted
 
@@ -293,10 +289,9 @@ and each time a reader found it first. Check them mechanically:
 make check-remote        # python tools/check_github_sync.py
 ```
 
-It fails unless the tag equals `HEAD`, the asset's digest matches
-`SHA256SUMS.txt`, the notes quote this build's version, byte count and
-assertion count, and the description quotes this build's size. Run it before
-announcing a release and again after any commit that lands once one is
-published; a post-release commit will make it fail on the tag check, which is
-the signal to either re-point the tag as described above or cut a patch
-release.
+It fails unless the tag is an ancestor of `HEAD` with `src/` unchanged since,
+the asset's digest matches `SHA256SUMS.txt`, the notes quote this build's
+version, byte count and assertion count, and the description quotes this build's
+size. Run it before announcing a release and again after any commit that lands
+once one is published; documentation commits pass, a commit that touches `src/`
+fails and means the release is due a new version.

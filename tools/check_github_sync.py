@@ -168,14 +168,31 @@ _, dirty, _ = git("status", "--porcelain")
 check("工作区干净（否则检查的不是将要发布的内容）", dirty == "",
       "" if dirty == "" else dirty.splitlines()[0])
 print("==== 1. 标签指向的源码 ====")
-# The tag is what a reader gets from "Browse files at tag" and from the
-# auto-generated source archive, so it has to be the commit that is checked
-# out. Anything after the tag means the published tree describes an older
-# state than the release notes do.
+# Two things matter here, and "the tag is HEAD" is not one of them. Requiring
+# equality forced every post-release commit — a typo, a screenshot, a build
+# tweak — to rewrite a public tag; v1.0.4 needed that five times. What the tag
+# actually has to guarantee is narrower:
+#
+#   * it is an ancestor of HEAD, so it names this line of history and not some
+#     other branch's commit;
+#   * `src/` has not moved since, so the tagged tree still holds the code the
+#     release notes describe. Prose, screenshots and build plumbing may follow
+#     the tag: if any of them changed the output, the digest check below goes
+#     red on its own.
 code, tag_commit, err = git("rev-parse", TAG + "^{commit}")
 check("本地存在标签 " + TAG, code == 0, tag_commit[:7] if code == 0 else err)
-check("标签指向 HEAD（发布后不再有提交）", tag_commit == head,
-      "%s vs HEAD %s" % (tag_commit[:7], head[:7]))
+code, _, _ = git("merge-base", "--is-ancestor", TAG, "HEAD")
+check("标签是本分支的祖先（不是别的分支上的提交）", code == 0,
+      "%s 不在 HEAD %s 的历史里" % (tag_commit[:7], head[:7]))
+
+code, moved, _ = git("diff", "--name-only", TAG + "..HEAD", "--", "src")
+moved = moved.strip() if code == 0 else ""
+check("标签之后 src/ 未变动（源码一变就是下一个版本）", moved == "",
+      "" if moved == "" else moved.replace("\n", ", "))
+
+code, behind, _ = git("rev-list", "--count", TAG + "..HEAD")
+print("INFO  标签之后有 %s 个提交；文档与截图允许跟进，源码不允许"
+      % (behind.strip() or "?"))
 
 code, remote_tags, err = git("ls-remote", "origin",
                              "refs/tags/" + TAG, "refs/tags/" + TAG + "^{}")
