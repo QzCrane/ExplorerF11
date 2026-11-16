@@ -50,11 +50,11 @@ rem carry CJK wide literals. Without it cl decodes them with the system ANSI
 rem code page, so a Japanese string compiles correctly only on a Japanese
 rem machine and turns to mojibake everywhere else.
 if /i "%MODE%"=="debug" (
-    cl /nologo /std:c++23 /utf-8 /EHsc /W4 /Zi /Od /D_DEBUG ^
+    cl /nologo /std:c++latest /utf-8 /EHsc /W4 /Zi /Od /D_DEBUG ^
        src\main.cpp src\config.cpp src\residue.cpp src\i18n_extra.cpp dist\app.res ^
        /Fo:dist\ /Fe:dist\ExplorerF11.exe /link /SUBSYSTEM:CONSOLE
 ) else (
-    cl /nologo /std:c++23 /utf-8 /EHsc /W4 /O2 /GL /DNDEBUG ^
+    cl /nologo /std:c++latest /utf-8 /EHsc /W4 /O2 /GL /DNDEBUG ^
        src\main.cpp src\config.cpp src\residue.cpp src\i18n_extra.cpp dist\app.res ^
        /Fo:dist\ /Fe:dist\ExplorerF11.exe /link /SUBSYSTEM:WINDOWS /LTCG
 )

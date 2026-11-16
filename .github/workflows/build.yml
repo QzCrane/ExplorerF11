@@ -29,7 +29,7 @@ jobs:
           rem /utf-8 is mandatory: the sources are UTF-8 without a BOM and carry
           rem CJK wide literals. Without it cl decodes them with the ANSI code
           rem page and the Japanese and Korean strings turn into mojibake.
-          cl /nologo /std:c++23 /utf-8 /EHsc /W4 /O2 /DNDEBUG ^
+          cl /nologo /std:c++latest /utf-8 /EHsc /W4 /O2 /DNDEBUG ^
              src\main.cpp src\config.cpp src\residue.cpp src\i18n_extra.cpp dist\app.res ^
              /Fo:dist\ /Fe:dist\ExplorerF11.exe ^
              /link /SUBSYSTEM:WINDOWS

@@ -24,10 +24,11 @@ compilation baseline from C++17 to C++23. No documented behaviour changes.
 
 ### Changed
 
-- **Compilation baseline is C++23** for MinGW (`-std=c++23`), MSVC
-  (`/std:c++23`) and CI. The sources use no C++20/23-only library facilities, so
-  a toolchain limited to C++17 can still build them by changing one flag in
-  `Makefile` or `build.bat`.
+- **Compilation baseline is C++23.** MinGW and CI use `-std=c++23`; MSVC uses
+  `/std:c++latest` because VS 18's `cl` rejects `/std:c++23` as an unknown
+  option and then compiles as C++14, which fails on every inline variable in
+  `app.h`. The sources use no C++20/23-only library facilities, so C++17 remains
+  a one-flag fallback on older toolchains.
 
 ### Delivery
 
