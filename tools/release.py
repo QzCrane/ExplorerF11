@@ -668,10 +668,20 @@ def stage_verify(cfg):
         note(ver)
 
         status = run([asset, "--status", "--quiet"], check=False, timeout=120)
-        if status.returncode != 0:
-            raise Fail("downloaded asset exits %d on --status"
+        # --status is a read-only verdict, not a health check: exit 0 means the
+        # machine is clean, exit 1 means residues were found. Both are correct
+        # outcomes (see the --help text and main.cpp), and the build machine
+        # normally has its own autostart/MuiCache entries, so requiring 0 here
+        # made a correct binary look broken. What proves the downloaded exe ran
+        # is the report on stdout; only an unexpected exit code is a failure.
+        if status.returncode not in (0, 1):
+            raise Fail("downloaded asset exits %d on --status (expected 0 or 1)"
                        % status.returncode)
-        note("--status exits 0")
+        if "ExplorerF11" not in status.stdout:
+            raise Fail("--status produced no report on stdout (exit %d)"
+                       % status.returncode)
+        note("--status exits %d (0 = clean, 1 = residues found; both valid)"
+             % status.returncode)
 
         if cfg.signed:
             signtool = shutil.which("signtool")
