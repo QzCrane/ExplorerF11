@@ -1,111 +1,124 @@
 # Contributing
 
-Thanks for taking a look. This is a small utility, so the rules are short.
+ExplorerF11 is a small program with a narrow attack surface. The rules below
+exist to keep that true; they are shorter than the reasoning behind them, which
+is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-## Before you change behaviour
+## Invariants
 
-Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Three constraints are not
-negotiable, because they are the reason the project exists:
+Three constraints are non-negotiable. A change that breaks one has to argue that
+the constraint itself should change, not merely that the new behaviour is
+convenient:
 
-1. **No polling.** Everything is driven by the shell hook or a WinEvent hook.
-2. **No injection.** Messages to other processes, never a DLL, never memory
-   patching.
-3. **No residue you cannot remove.** A new registry value, file or cache entry
-   needs an entry in `residue.cpp` and a line in `docs/RESIDUE.md`, and
-   `--clean` must remove it. If it cannot be removed, say so in the report.
+1. **No polling.** Detection comes from the shell hook or a WinEvent hook.
+2. **No injection.** `PostMessageW` into another process is the only permitted
+   cross-process action — no DLL, no remote thread, no memory patching.
+3. **No unremovable residue.** A new registry value, file or cache entry needs a
+   case in `src/residue.cpp`, a row in `docs/RESIDUE.md` and removal by
+   `--clean`. If it cannot be removed, the report must say so.
 
-## Build
+## Build and test
+
+Either MSVC (Developer Command Prompt) or MinGW-w64 with `g++` on PATH:
 
 ```bat
 build.bat
 build.bat debug
 ```
 
-Requires either MSVC (Developer Command Prompt) or MinGW-w64 with `g++` on PATH.
+Then:
 
-## Test
-
-```bat
-rem static gates
-python tools\check_i18n.py
-python tools\audit_i18n.py
-python tools\check_help_align.py
-
-rem suites that drive the built binary
-python tests\test_lang_names.py
-python tests\test_menu_order.py
-python tests\test_residue_report.py
-python tests\test_registry_policy.py
-python tests\test_language.py
-python tests\test_icons.py
-python tests\test_tray_cleanup.py
-python tests\test_smoke.py
+```sh
+make test
 ```
 
-`make test` runs all eleven gates: three static checks and eight suites. They
-must pass before a pull request; the suites drive the real binary, so build
-first. Three rules for tests:
+Twelve gates: three static checks plus nine suites that drive the built binary.
+The suite needs the exe, so build first. `test_smoke.py` opens a real folder
+window and requires a desktop session.
 
-- every suite asserts and exits non-zero on failure — printing a report for a
+Three rules for tests:
+
+- every gate asserts and exits non-zero on failure. Printing a report for a
   human to read is not a test;
-- a test that changes state must restore it, including the autostart entry and
-  the stored language (see `test_registry_policy.py`);
-- a test must never delete a real user's settings. The clean-button test only
-  runs when the machine is already clean, and the tray test plants its own keys
-  instead of touching the user's.
+- a test that changes state restores it, including autostart and the stored
+  language — see `test_registry_policy.py`;
+- a test never deletes a real user's settings. The clean-button test only runs
+  when the machine is already clean, and the tray test plants its own keys.
 
-## Code style
+Event-driven paths (shell-hook recovery, F11 recovery, handle and icon
+ownership) cannot be driven deterministically on a CI runner. Pin their source
+contracts in `tests/test_robustness.py` and state plainly what was not
+exercised; do not substitute a mock for the Win32 behaviour and claim
+equivalence.
 
-- C++17, Win32 only. No third-party libraries, no C++ exceptions across the
-  Win32 boundary, no `std::filesystem` (it pulls in more than the exe saves).
-- Comments explain *why*, not *what*. A comment that restates the code is noise.
-- Every user-visible string goes through `T(L"简体中文", L"English")` from
-  `src/i18n.h`. Add the Traditional Chinese, Japanese and Korean forms to
-  `tools/translations.json`, keyed by the exact Simplified Chinese literal, then
-  run `python tools\sync_i18n.py` (it updates the key list, reports anything
-  still untranslated, and regenerates `src/i18n_extra.cpp`). A string missing
-  from any of the five languages is a bug; `tools/check_i18n.py` enforces
-  coverage and `tools/audit_i18n.py` enforces quality on every build.
-- A language is named in exactly one place, `LangName()` in `src/i18n.h`, and
-  the name never varies with the UI language. Do not hardcode a language name in
-  a translated string: that is how the report header ended up claiming every
-  report was written in Chinese.
-- Check every `PostMessage`/`Reg*` return value when a failure would be silent.
+## Code conventions
+
+- C++17 and Win32 only. No third-party libraries, no C++ exceptions across a
+  Win32 callback, no `std::filesystem` — it pulls in more code than the exe
+  saves.
+- Comments explain *why*. A comment that restates the code is noise.
+- Check every `PostMessage` and `Reg*` return value when a failure would be
+  silent. A failed delivery is what the recovery timer exists for.
 - Keep the exe small: `-Os`, static CRT, no iostream.
+- Ownership is explicit at teardown. A handle created by a fallback path must be
+  closed by that path; a system-owned icon must never be destroyed by the tool.
+- `--quiet`, `--lang` and the other CLI switches are parsed into local state
+  and applied after localisation, so diagnostics follow the selected language.
+  An unrecognised token fails with exit code 2; falling through to "start the
+  tray app" would turn a typo into a silent no-op.
+
+## User-visible strings
+
+Every user-visible string goes through `T(L"简体中文", L"English")` from
+`src/i18n.h`. Add the Traditional Chinese, Japanese and Korean forms to
+`tools/translations.json`, keyed by the exact Simplified Chinese literal, then
+run:
+
+```bat
+python tools\sync_i18n.py
+```
+
+It updates the key list, reports anything still untranslated and regenerates
+`src/i18n_extra.cpp`. A missing translation in any of the five languages is a
+bug: `tools/check_i18n.py` enforces coverage and `tools/audit_i18n.py` enforces
+script and punctuation rules on every build.
+
+A language is named in exactly one place — `LangName()` in `src/i18n.h` — and
+the name never varies with the UI language. Do not hardcode a language name in a
+translated string: that is how a report header once claimed every report was
+written in Simplified Chinese.
+
+If you add a flag, add it to `UsageText()` in `src/main.cpp` in all five
+languages, to both usage documents and to the help-alignment check. Keep the
+exit-code contract: `0` success, `1` residues found by `--status`, `2` usage
+error.
 
 ## Commits and pull requests
 
 - One logical change per commit; the message says what breaks without it.
-- Update `CHANGELOG.md` under an `Unreleased` heading for anything user-visible.
-- If you add a flag, add it to `UsageText()` in `src/main.cpp` in all five
-  languages, and to the table in both usage documents. Keep the exit-code
-  contract intact: `0` success, `1` residues found by `--status`, `2` usage
-  error. A token the parser does not recognise must fail loudly — falling
-  through to "start the tray app" is how a typo becomes a silent no-op.
-
-## Releasing
-
-[docs/RELEASING.md](docs/RELEASING.md) lists every file that carries the version,
-the eleven gates, and how an artefact is built, verified and published.
-
-## Docs
-
-Screenshots in `docs/images` are captures of the running binary, so they must be
-regenerated after any change to the menu or the report:
+- Add a `CHANGELOG.md` entry under `Unreleased` for anything user-visible.
+- Regenerate `docs/images` after changing the menu, tooltip or report window:
 
 ```bat
 python tools\capture-screenshots.py zh
 python tools\capture-screenshots.py en
 ```
 
-The script drives the real windows, so build first and close anything that would
-photobomb the popup.
+The script drives the real windows, so build first and close anything that
+would overlap the popup.
 
-## Reporting a bug
+## Bug reports
 
 Include the Windows build number (`winver`), whether ExplorerPatcher or a
-similar shell mod is installed, the output of `ExplorerF11.exe --status`, and the
-relevant lines from `%TEMP%\ExplorerF11.log` if you ran with `--log`.
+similar shell modification is installed, the output of `ExplorerF11.exe
+--status`, and the relevant lines from `%TEMP%\ExplorerF11.log` if you ran with
+`--log`. Behaviour that depends on undocumented shell internals changes between
+Windows builds; a report naming the build number is worth ten that do not.
 
-Behaviour that depends on undocumented shell internals can change between
-Windows builds. A report that names the build number is worth ten that do not.
+For anything security-related, use the private channel in
+[SECURITY.md](SECURITY.md) instead of a public issue.
+
+## Releasing
+
+[docs/RELEASING.md](docs/RELEASING.md) lists the files carrying the version, the
+twelve gates and the build/verification/publication sequence.

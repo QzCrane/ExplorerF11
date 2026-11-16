@@ -25,14 +25,16 @@ the invariant itself should change. See [docs/ARCHITECTURE.md](../docs/ARCHITECT
 
 ```
 make            # or build.bat
-make test       # 11 gates: 3 static checks + 8 suites
+make test       # 12 gates: 3 static checks + 9 suites, 319 assertions
 ```
 
 - [ ] `make test` passes locally
+- [ ] A clean-checkout build passes, not only the working tree (see `docs/RELEASING.md`)
 - [ ] New or changed user-visible strings exist in all five languages, and
       `python tools\sync_i18n.py` has been run
 - [ ] `CHANGELOG.md` has an entry under `Unreleased` if a user can see the change
 - [ ] Screenshots regenerated if the menu, the tooltip or the report window changed
+- [ ] Version references updated in both READMEs and SECURITY.md if a release is involved
 
 ## Notes for the reviewer
 

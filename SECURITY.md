@@ -1,83 +1,82 @@
 # Security policy
 
-ExplorerF11 posts two window messages to File Explorer windows. It is a small
-program, but it runs next to the shell, so this document states exactly what it
-does with your privileges, what it never does, and how to check both claims
-against a downloaded binary.
+ExplorerF11 runs with the token of the user who launched it and sends two window
+messages to Explorer. This document states the resulting privilege boundary, the
+inputs the program accepts, and how to check both claims against a downloaded
+binary.
 
 ## Supported versions
 
 | Version | Supported |
 |---|---|
-| 1.0.x | Yes — security fixes land in the next 1.0.z patch |
-| Anything else | No. Builds numbered above 1.0.0 before release were internal build numbers and were never published. |
+| 1.0.x | Yes — security fixes ship as later 1.0.x patches |
+| Anything else | No. Numbers above 1.0.0 that predate the first release were internal build numbers and were never published. |
 
 ## Reporting a vulnerability
 
-Open a private report through GitHub:
+Use the private GitHub channel:
 
 **https://github.com/QzCrane/ExplorerF11/security/advisories/new**
 
-Please do not open a public issue for anything that could be exploited before a
-fix is available.
+Do not open a public issue for anything exploitable before a fix exists. A useful
+report includes:
 
-A useful report contains:
+- the Windows build number (`winver`) and architecture;
+- the exact command line, and whether autostart was enabled;
+- output of `ExplorerF11.exe --status --lang en`, plus the relevant lines from
+  `%TEMP%\ExplorerF11.log` if it was started with `--log`;
+- what an attacker gains that they did not already have. For a utility running
+  under the user's own token, "it runs code as me" is not a vulnerability;
+  "another process can make it run code" is.
 
-- the Windows build number (`winver`) and the architecture;
-- the exact command line used, and whether autostart was enabled;
-- the output of `ExplorerF11.exe --status --lang en` and, if you ran with
-  `--log`, the lines from `%TEMP%\ExplorerF11.log`;
-- what an attacker gains that they did not have before — for a local utility
-  that runs with the user's own token, "it runs code as me" is not a
-  vulnerability, but "another process can make it run code" is.
+This is an unfunded, single-maintainer project. Reports are handled on a
+best-effort basis, usually within a week; there is no bug bounty.
 
-This is a single-maintainer project with no funding; reports are handled on a
-best-effort basis, typically within a week. There is no bug bounty.
+## Privilege boundary
 
-## What the program does with your privileges
+- **No elevation.** No `runas`, no `ShellExecuteEx` elevation request, no
+  `IsUserAnAdmin` branch and no service. Everything runs on the launching
+  user's token. Removing Prefetch entries is the only operation that may need
+  elevation; without it, those entries are reported as skipped.
+- **HKCU only.** `HKCU\Software\ExplorerF11` holds at most three values, and
+  only when they differ from defaults. The autostart value lives under the
+  per-user `Run` key. Windows' own `StartupApproved` flag is written when
+  autostart is toggled in Task Manager.
+- **One file on request.** `%TEMP%\ExplorerF11.log` is created only with
+  `--log`.
+- **Registry values are data, not code.** Malformed values fall back to
+  defaults; nothing read from the registry is executed or interpreted as a
+  command.
 
-- **It never elevates.** There is no `runas` launch, no `ShellExecuteEx`
-  elevation request, no `IsUserAnAdmin` check and no service. Everything runs
-  with the token of the user who started it. Removing Prefetch entries is the
-  only operation that can require elevation, and without it those entries are
-  simply reported as skipped.
-- **It writes to `HKCU` only**, and only when a setting leaves its default:
-  `HKCU\Software\ExplorerF11` (three values), the `Run` autostart value, and
-  Windows' own `StartupApproved` flag when autostart is toggled.
-- **It writes one file, and only on request**: `%TEMP%\ExplorerF11.log`, when
-  started with `--log`.
-- **It reads the command line and its own registry values.** Malformed values
-  fall back to defaults; the program never treats stored data as code.
+## What the binary does not contain
 
-## What it never does
-
-- **No network access.** The import table is `KERNEL32`, `USER32`, `GDI32`,
-  `SHELL32`, `ADVAPI32`, `msvcrt` — no WinINet, WinHTTP, `ws2_32` or DNS API.
-  There is no update check and no telemetry, so nothing can be fetched into the
-  process at run time.
+- **No network.** The import table is `KERNEL32`, `USER32`, `GDI32`, `SHELL32`,
+  `ADVAPI32` and `msvcrt` — no WinINet, WinHTTP, `ws2_32` or DNS API. There is no
+  update check and no telemetry, so nothing can be fetched into the process at
+  run time.
 - **No injection.** No `SetWindowsHookEx` with a DLL, no `CreateRemoteThread`,
-  no `WriteProcessMemory`, no `QueueUserAPC`, no AppInit/shim. The only
-  cross-process action is `PostMessageW` (and `WM_CLOSE` is never posted by the
-  accelerator; the report window closes only its own windows).
-- **No code loading at run time.** No `LoadLibrary` of a path from disk, no
-  script engine, no plugin directory.
-- **No privilege boundary crossed.** It cannot affect a window owned by another
-  user or another elevation level; `PostMessageW` is filtered by UIPI exactly as
-  the operating system intends.
+  no `WriteProcessMemory`, no `QueueUserAPC`, no AppInit or shim. The only
+  cross-process action is `PostMessageW`. The accelerator never posts
+  `WM_CLOSE`; the report window closes only its own windows.
+- **No run-time code loading.** No `LoadLibrary` of a path from disk, no script
+  engine, no plugin directory.
+- **No crossing of a privilege boundary.** UIPI filters `PostMessageW` exactly
+  as Windows intends, so a window owned by another user or a higher integrity
+  level is out of reach.
 
-## Attack surface, in full
+## Attack surface
 
 | Surface | Input | Handling |
 |---|---|---|
-| Command line | `--lang`, `--install`, `--clean`, … | fixed set; anything else is echoed back with a pointer to `--help` and exit code 2, never ignored; `--lang` is matched against five tags plus aliases, and an unresolvable tag is a usage error |
-| Registry | `Tabs`, `InitialSweep`, `Language`, `Run` value | read as data, unknown values fall back to defaults |
-| Window messages | `TaskbarCreated`, shell hook notifications, `WM_CLOSE` on its own hidden window | class and process checked before acting |
-| Tray | menu commands | the only destructive command asks for confirmation and lists what it deletes |
+| Command line | `--lang`, `--install`, `--clean`, … | fixed option set; the first unplaceable token is echoed with a pointer to `--help` and exit code 2. `--lang` is matched against five tags and their aliases; an unresolved value is a usage error, and a following option is never consumed as a value |
+| Registry | `Tabs`, `InitialSweep`, `Language`, `Run` value | read as data; unknown values fall back to defaults |
+| Window messages | `TaskbarCreated`, shell-hook notifications, `WM_CLOSE` on the tool's own window | class and process identity are checked before acting |
+| Tray | menu commands | the sole destructive command asks for confirmation and lists what it deletes |
 
 ## Verifying a release
 
-Every release page lists a SHA-256 for the uploaded exe. Check it before running
-the binary:
+Every release page publishes a SHA-256 for the uploaded exe. Check it before
+running the file:
 
 ```powershell
 Get-FileHash .\ExplorerF11-1.0.1-win64.exe -Algorithm SHA256
@@ -85,17 +84,20 @@ Get-FileHash .\ExplorerF11-1.0.1-win64.exe -Algorithm SHA256
 .\ExplorerF11-1.0.1-win64.exe --version                            # ExplorerF11 1.0.1
 ```
 
-To confirm the import table yourself:
+The import table can be checked independently:
 
 ```powershell
 dumpbin /imports .\ExplorerF11-1.0.1-win64.exe | Select-String "\.dll"
 ```
 
-**The binary is not code-signed.** Windows SmartScreen will therefore warn on
-first run — that is expected for an unsigned single-file utility, and the hash on
-the release page is the integrity check that replaces a signature. Building from
-source is the stronger option, and the build is one command (see
-[README](README.md#build)).
+The binary is **not code-signed**, so SmartScreen warns on first run. That is
+expected for an unsigned single-file utility: the published hash is the
+integrity check that replaces a signature. Building from source is the stronger
+option and takes one command — see [README](README.md#build).
+
+A hash proves the file matches the release page. It does not prove the release
+page belongs to this project; check that you followed a link from the
+repository before trusting either.
 
 ## Out of scope
 
@@ -104,6 +106,6 @@ source is the stronger option, and the build is one command (see
   registering a shell hook. Report those to the vendor; the behaviour is
   documented in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 - The absence of a Microsoft code-signing certificate.
-- Anything that requires the attacker to already run code as the same user, with
-  the same integrity level, and with the ability to start processes — at that
-  point the tool grants nothing that was not already available.
+- Any scenario where the attacker already runs code as the same user, at the
+  same integrity level, with the ability to start processes. At that point the
+  tool grants nothing that was not already available.

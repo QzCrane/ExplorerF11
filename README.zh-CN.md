@@ -5,79 +5,59 @@
 [![license](https://img.shields.io/github/license/QzCrane/ExplorerF11)](LICENSE)
 ![platform](https://img.shields.io/badge/platform-Windows%2011%20x64-0078D4)
 
-**自动化的 F11 加速工具：事件驱动，默认不写入注册表。**
-
-Windows 11 的资源管理器用 XAML 画命令栏、地址栏和导航窗格，每次导航都要重新同步
-这一层。按两下 `F11`（进全屏再退出）会把这一层拆掉重建，重建后的窗口翻目录明显更
-快。这个技巧流传很广，但一直得手动按。
-
-ExplorerF11 把它自动化：文件夹窗口出现、或者你在窗口里新建选项卡时，向那个窗口
-投递同样两次 F11 循环。加速以窗口为单位——窗口里的所有选项卡共用这一次往返，
-不会逐个选项卡加速。不轮询、不抢焦点、不要管理员权限，单文件 366 KiB。
-
-> **这不是系统修复。** 它把绕过手段自动化了。微软从未发布针对这一差异的补丁，
-> 证据与时间线见 [docs/RESEARCH.md](docs/RESEARCH.md)。
+一个常驻托盘的 Windows 11 资源管理器加速工具：给新打开的文件夹窗口投递一次 F11
+往返。事件驱动，单文件 367 KiB 未签名 exe，默认配置下不写注册表。[English](README.md)。
 
 <p align="center">
   <img src="docs/images/tray-menu.zh-CN.png" width="330" alt="托盘菜单">
   <img src="docs/images/residue-report.zh-CN.png" width="430" alt="残留报告">
 </p>
 
-<p align="center"><sub>界面为中文；英文界面见 <a href="README.md">README.md</a> 的同款截图。</sub></p>
+## 作用机制
 
-## 与同类工具的区别
+资源管理器的命令栏、地址栏和导航窗格用 XAML 绘制，每次导航都要重新同步这一层。
+连按两次 `F11` 会拆掉这一层再重建，重建后的窗口翻目录更快，装了壳扩展时尤其明显。
+ExplorerF11 用 `PostMessageW` 把这两次按键直接投进目标窗口的消息队列，替你完成这个动作。
 
-同类工具要么是每 300 ms 轮询一遍窗口的 AutoHotkey 脚本，要么是只处理启动时那一
-个窗口的一次性小工具。这个项目正面回答三个问题：
+有四条边界决定了这个工具是什么：
 
-1. **闲着的时候花多少资源？** 1 个空闲线程、2.3 MB 私有内存、156 个句柄、
-   0% CPU——它阻塞在 `GetMessage`，等 Shell 报告窗口。
-2. **会不会搞坏资源管理器？** 只投递消息，不注入、不挂 DLL、不改内存。投递失败
-   的那一对消息会被回滚（退出全屏并撤掉窗口标记）。
-3. **会留下什么？** 默认什么都不留：不写注册表、不建文件。真改了设置，程序会把
-   写了什么一条条列给你看，一条命令全部清掉——连 Windows 自己记的那几项也清。
+- **不轮询。** Shell 钩子报告顶层窗口创建，WinEvent 钩子报告选项卡创建和从最小化还原。
+  空闲时阻塞在 `GetMessageW`：实测私有内存 1.87 MB、135 个句柄，两分钟累计 CPU 约 0.03 秒。
+- **不注入、不抢焦点。** `PostMessageW` 只投递按键消息，不碰前台窗口，也不改真实键盘状态。
+  没有 DLL 注入、没有内存修改、不用 `SendInput`。
+- **一次动作对应一个窗口。** `F11` 由 `CabinetWClass` 窗口框架处理，一次往返覆盖该窗口的
+  所有选项卡；选项卡（`ShellTabWindowClass`）没有独立的 F11 状态。状态行写作
+  `已加速 1 个窗口（含 2 个选项卡）`——窗口是动作单位，括号里是这些窗口当前装了多少选项卡。
+- **卸载只需删掉文件。** 设置只存偏离默认值的值，所以默认运行既不写注册表也不建文件。
+  `--status` 列出全部 11 个可能位置及其实时状态，`--clean` 清掉所有可清理项。
 
-## 下载
+这是绕过未公开 Shell 行为的技巧，不是修复。微软没有发布针对这一差异的补丁。实测数据、
+更新史和被否掉的方案见 [docs/RESEARCH.md](docs/RESEARCH.md)。
 
-[**最新发行版**](https://github.com/QzCrane/ExplorerF11/releases/latest)——
-`ExplorerF11-1.0.1-win64.exe`，366 KiB，x64。
+## 安装与首次运行
 
-- 单文件。没有安装程序、没有运行库、没有服务，不需要管理员权限。
-- 二进制**未做代码签名**，首次运行会触发 SmartScreen 警告。运行前请核对发行页
-  上列出的 SHA-256：
+从[最新发行版](https://github.com/QzCrane/ExplorerF11/releases/latest)下载
+`ExplorerF11-1.0.1-win64.exe`，核对哈希，放到一个固定位置——它不写文件，放哪都行，
+推荐 `%LOCALAPPDATA%\Programs\ExplorerF11\`。
 
-  ```powershell
-  Get-FileHash .\ExplorerF11-1.0.1-win64.exe -Algorithm SHA256
-  ```
+```powershell
+Get-FileHash .\ExplorerF11-1.0.1-win64.exe -Algorithm SHA256
+```
 
-- 每个发行版都从对应 tag 构建，发行说明里写明所用的工具链、SHA-256 与实测的
-  Windows 版本。CI 在每次推送和打 tag 时用 MSVC 构建同一个提交。
+二进制**未做代码签名**，首次运行 SmartScreen 会警告。请先与发行页上的 SHA-256 比对。
+双击运行，打开一个文件夹窗口，托盘悬浮提示会显示加速状态。托盘 →「开机自启」会写入一条
+`HKCU\...\Run\ExplorerF11`，内容是带引号的 exe 完整路径，不带参数。
 
-## 环境要求
+环境要求：Windows 11 x64（在 26300.9974 上实测），不需要 .NET、VC++ 运行库或管理员权限。
+删 Prefetch 是唯一需要提权的操作，`--clean` 会如实报告跳过的内容。
 
-- Windows 11 x64（在 26300.9974 上实测）。
-- 不需要任何运行库，不需要管理员权限。只有删 Prefetch 需要提权，`--clean` 会
-  如实告诉你哪一项没删掉。
+## 界面语言
 
-## 快速开始
+五种译文都编在 exe 内，没有单独的资源 DLL。托盘 →「界面语言」是五项单选，每行用各自
+语言的自称书写，顺序固定，因此误切到看不懂的语言也能找回来。报告头里
+「界面语言：」后面写的是同一个名字。
 
-1. 把 `ExplorerF11.exe` 放到一个固定位置（它不写文件，放哪都行；
-   建议 `%LOCALAPPDATA%\Programs\ExplorerF11\`）。
-2. 双击运行。托盘出现图标，之后新开的文件夹窗口自动生效。
-3. 可选：托盘 → **开机自启**。
-
-没有安装程序，没有服务，就这些。
-
-界面提供简体中文、繁体中文、英文、日文和韩文五种文案，运行中随时可在托盘 →
-**界面语言** 里切换；优先级与保存规则见下面的[语言](#语言)一节。
-
-## 语言
-
-所有文案都编在同一个 exe 里，没有资源 DLL。托盘的 `界面语言` 是一组单选：五项
-各用该语言的自称书写，顺序在任何界面语言下都相同，因此即使误切到不熟悉的语言，
-也能按字形找回。报告头里的「界面语言：」后面写的就是同一个名字。
-
-| 菜单标签 | 常用 BCP-47 别名 |
+| 菜单标签 | 可接受的标签 |
 |---|---|
 | 简体中文 | `zh`、`zh-cn`、`zh-hans`、`zh-sg` |
 | 繁體中文 | `zh-Hant`、`zh-tw`、`zh-hk`、`zh-mo` |
@@ -85,109 +65,87 @@ ExplorerF11 把它自动化：文件夹窗口出现、或者你在窗口里新�
 | 日本語 | `ja`、`ja-jp` |
 | 한국어 | `ko`、`ko-kr` |
 
-切换立即生效：托盘菜单、状态与悬浮提示、已经打开的残留报告窗口（标题、正文和按钮）
-会一起更新，选择会被记住。
-
 优先级从高到低：
 
 | 来源 | 作用范围 |
 |---|---|
 | `--lang <tag>` | 仅本次运行 |
 | `EXPLORERF11_LANG=<tag>` | 仅本次运行（脚本、便携拷贝） |
-| 托盘里的选择，存为 `HKCU\Software\ExplorerF11\Language` | 长期有效 |
-| Windows 区域格式与 UI 语言 | 默认值 |
+| 托盘选择，存于 `HKCU\Software\ExplorerF11\Language` | 长期有效 |
+| Windows 区域格式，其次界面语言 | 默认值 |
 
-保存值遵守与其他设置相同的规则：只有与系统语言不同时才存在，选回系统语
-言即删除该值并顺带删掉空键。从不打开这个子菜单的用户，一个字节都不会写。
+保存值遵守与其他设置相同的规则：只有与系统语言不同时才存在，选回系统语言即删除。
+运行中切换语言会立即重绘托盘菜单、悬浮提示和已打开的报告窗口。
 
 ## 命令行
 
 ```
 ExplorerF11.exe [选项]
 
-  （无参数）        在托盘里运行，自动加速之后打开的文件夹窗口
+  （无参数）        在托盘里运行，加速之后打开的文件夹窗口
   --install         在托盘里运行，并勾选开机自启
   --uninstall       只删除开机自启项，其他一切不动
-  --status          打印完整残留报告；退出码 0=干净，1=有可清理项
+  --status          打印残留报告；退出码 0=干净，1=有残留
   --clean, --purge  删除全部可清理残留后退出（会先关闭正在运行的实例）
   --menu            把托盘菜单按文本打印出来（供测试与排查）
   --lang <tag>      本次运行的界面语言（zh/zh-Hant/en/ja/ko）
   --log             写日志到 %TEMP%\ExplorerF11.log
-  --no-initial      不处理启动前已经打开的窗口
-  --quiet           不弹任何对话框（脚本用）
+  --no-initial      不处理启动前已打开的窗口
+  --quiet           不弹对话框（脚本用）
   --version, -v     打印版本号
-  --help, -h        打印这段说明
+  --help, -h        打印帮助
 ```
 
-退出码：`0` 成功或机器干净，`1` 是 `--status` 找到可清理残留，`2` 是用法错误
-（未知选项，或 `--lang` 给了不支持的语言标签）。未知选项会被原样打印并提示
-`--help`，不会被忽略——打字错误不会静默启动一个托盘实例。
+```powershell
+ExplorerF11.exe --status --lang en
+if ($LASTEXITCODE -eq 0) { "干净" } else { "有残留" }
+```
+
+退出码：`0` 成功或机器干净，`1` 是 `--status` 找到残留，`2` 是用法错误。未知选项会原样
+打印并指向 `--help`，不会被忽略——打字错误不会静默启动一个托盘实例。裸写 `--lang`、
+或 `--lang` 后面跟着另一个选项，都会报「缺少语言标签」，而不是把下一个选项吃掉当语言值。
 
 ## 残留
 
-默认配置不写入注册表。报告列出 11 个可能的位置、分三组，每条都写明谁写的、在哪、现在有
-什么、清理时删不删，详见 [docs/RESIDUE.md](docs/RESIDUE.md)。
+11 个位置的完整清单、写入方和手工核对方法见 [docs/RESIDUE.md](docs/RESIDUE.md)。概要：
 
-| 分组 | 例子 | 怎么清 |
+| 分组 | 例子 | 清理方式 |
 |---|---|---|
-| 本程序写入 | 设置键（`Tabs`、`InitialSweep`、`Language`）、自启项、日志文件 | `--clean` |
-| Windows 自动记录 | 托盘图标缓存、启动开关、兼容性助手、MuiCache、UserAssist、Prefetch | `--clean` |
-| 程序本体 | exe 自己 | 删掉它 = 卸载 |
+| 本程序写入 | 设置值、自启项、日志、窗口属性 | `--clean`；窗口属性随资源管理器退出消失 |
+| Windows 自动记录 | 托盘图标缓存、启动开关、兼容性助手、MuiCache、UserAssist、Prefetch | `--clean`（Prefetch 需提权） |
+| 程序本体 | 你下载的 exe | `--clean` 之后手动删除 |
 
-最坏情况全部加起来不到 6 KB，而且不会越用越多：没有历史记录、没有缓存、默认不写
-日志。
+最坏情况下所有可清理项不到 6 KB（不含由 Windows 管理的 Prefetch 缓存）。不会越用越
+多：没有历史记录、没有数据库，不传 `--log` 就不写日志。
 
-## 编译
+## 构建与验证
 
 ```bat
 build.bat            :: 有 MSVC 就用 MSVC，否则用 MinGW-w64
 build.bat debug
 ```
 
-或者 MinGW make：
+或者 PATH 里有 MinGW-w64 时：
 
 ```sh
 make
 make test
 ```
 
-产出单个自包含的 `dist\ExplorerF11.exe`。纯 C++17 + Win32，只依赖 `user32`、
-`shell32`、`advapi32`。
+纯 C++17 + Win32，只导入 `user32`、`shell32` 和 `advapi32`。`make test` 跑 12 道闸门：
+3 项静态检查和 9 个直接驱动编译产物的套件，合计 319 项断言。冒烟测试会打开真实的文件夹
+窗口，需要桌面会话。其中 `tests/test_robustness.py` 锁定的是 CI 无法复现的事件驱动路径与
+CLI 行为：Shell 钩子恢复、带句柄复用的 F11 恢复、控制台句柄所有权、图标所有权和参数解析。
 
-## 测试
-
-`make test` 跑 11 道闸门：3 项针对源码与译文的静态检查，8 个直接驱动编译产物
-的套件（不用 mock），合计 295 项断言。每道闸门都会断言，失败即返回非零。
-
-| 闸门 | 检查内容 |
+| 文档 | 内容 |
 |---|---|
-| `tools/check_i18n.py` | 每个 `T()` 键在五种语言里都存在、占位符一致、生成的表是最新的 |
-| `tools/audit_i18n.py` | 译文里混入错误书写系统、ASCII 标点贴 CJK、括号半全角混用、术语漂移 |
-| `tools/check_help_align.py` | 五种语言的 `--help` 选项列起始偏移一致 |
-| `tests/test_lang_names.py` | 五行语言名在任何界面语言下逐字节相同；报告头写出实际生效的语言（20） |
-| `tests/test_menu_order.py` | 菜单结构、五行语言单选、正文随语言切换、计数单位、未知选项处理（75） |
-| `tests/test_residue_report.py` | 残留报告的结构与措辞在五种语言下正确（71） |
-| `tests/test_registry_policy.py` | 默认不写；设置改回默认即删除（28） |
-| `tests/test_language.py` | 命令行、环境变量、托盘三条切换路径，报告窗口实时重绘，持久化（63） |
-| `tests/test_icons.py` | 两个图标与版本块都在 exe 里（23） |
-| `tests/test_tray_cleanup.py` | `--clean` 只删本程序的记录，不碰别人的（7） |
-| `tests/test_smoke.py` | 真实文件夹窗口上的完整事件路径，以及资源上限（8） |
-
-测试会把改动过的状态还原，包括自启项和保存的语言。唯一的破坏性步骤（清理按钮）
-只在机器本来就干净时执行。套件需要桌面会话：`test_smoke.py` 会打开并关闭一个
-真实的资源管理器窗口。
-
-## 文档
-
-| | |
-|---|---|
-| [docs/USAGE.zh-CN.md](docs/USAGE.zh-CN.md) · [English](docs/USAGE.en.md) | 每个选项、每个菜单项、每个对话框 |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 模块划分、事件模型、为什么不用轮询、资源占用 |
-| [docs/RESIDUE.md](docs/RESIDUE.md) | 11 个可能位置、谁写入、如何手动核对 |
-| [docs/RESEARCH.md](docs/RESEARCH.md) | F11 行为、微软补丁史、所有同类工具 |
-| [docs/RELEASING.md](docs/RELEASING.md) | 版本号改哪几处、11 道闸门、产物如何构建、核对与发布 |
-| [SECURITY.md](SECURITY.md) | 程序用你的权限做了什么、从不做什么、如何核对下载到的二进制 |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | 三条不可让步的约束、代码风格、译文工作流 |
+| [docs/USAGE.zh-CN.md](docs/USAGE.zh-CN.md) · [English](docs/USAGE.en.md) | 每个选项、菜单项、对话框与失败情形 |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 模块边界、事件模型、Win32 细节、资源占用 |
+| [docs/RESIDUE.md](docs/RESIDUE.md) | 11 个位置、写入策略、手工核对 |
+| [docs/RESEARCH.md](docs/RESEARCH.md) | 实测、更新史、同类工具、被否掉的方案 |
+| [docs/RELEASING.md](docs/RELEASING.md) | 版本号改哪几处、闸门、产物构建与发布 |
+| [SECURITY.md](SECURITY.md) | 权限使用、攻击面、二进制核对 |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | 三条约束、代码约定、译文工作流 |
 
 ## 许可
 

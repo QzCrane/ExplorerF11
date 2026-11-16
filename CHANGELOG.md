@@ -8,9 +8,10 @@ they are kept below as build history rather than as releases.
 
 ## 1.0.1 - 2026-11-16
 
-Patch release. Five defects found in a post-release audit, none of which CI or
-the existing suites covered; the shell-hook, recovery and console paths are
-exercised only by live OS events that a runner cannot drive deterministically.
+Patch release. Six defects found in a post-release audit. None was covered by CI
+or the existing suites: the shell-hook, recovery and console paths are driven by
+live OS events that a runner cannot reproduce deterministically. Each fix is
+pinned by a source-contract assertion in `tests/test_robustness.py`.
 
 ### Fixed
 
@@ -42,8 +43,17 @@ exercised only by live OS events that a runner cannot drive deterministically.
 
 ### Added
 
-- `tests/test_robustness.py`: 29 assertions covering all five fixes (source
-  contracts for the event-driven paths, a behavioural CLI check for `--lang`).
+- `tests/test_robustness.py`: 24 assertions covering all six fixes — source
+  contracts for the event-driven paths, behavioural CLI checks for argument
+  parsing, and ownership checks for the console handle and the fallback icon.
+
+### Measured
+
+Resource figures were re-measured on the 1.0.1 binary after the icon and handle
+fixes: 367 KiB on disk, 1.87 MB private, 135 handles, 4 threads shortly after
+start-up (three pool workers retire after about 45 s idle), 0.03 s cumulative
+CPU per two minutes. The 1.0.0 figures below were accurate for that build; the
+difference is not a regression.
 
 ## 1.0.0 - 2026-11-16
 
