@@ -123,7 +123,8 @@ builds (the installed 26100 build against a 26300 system is exactly that case).
 - `PostMessage` F11 changes the style and rectangle as quoted above, and a second
   press restores them exactly.
 - End-to-end log: `started (tab hook ok)` → `accelerated: drivers - File Explorer`.
-- Steady state: 1 thread, 148 handles, 3.5 MB private, 0.016 s cumulative CPU.
+- Steady state after two minutes: 1 thread, 156 handles, 2.3 MB private, 0.031 s
+  cumulative CPU (start-up included).
 - Registry policy: zero writes on a default run, values deleted when returned to
   default, `--clean` returns to zero (see `tests/test_registry_policy.py`).
 

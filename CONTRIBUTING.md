@@ -10,8 +10,8 @@ negotiable, because they are the reason the project exists:
 1. **No polling.** Everything is driven by the shell hook or a WinEvent hook.
 2. **No injection.** Messages to other processes, never a DLL, never memory
    patching.
-3. **No footprint you cannot remove.** A new registry value, file or cache entry
-   needs an entry in `footprint.cpp` and a line in `docs/FOOTPRINTS.md`, and
+3. **No residue you cannot remove.** A new registry value, file or cache entry
+   needs an entry in `residue.cpp` and a line in `docs/RESIDUE.md`, and
    `--clean` must remove it. If it cannot be removed, say so in the report.
 
 ## Build
@@ -26,15 +26,24 @@ Requires either MSVC (Developer Command Prompt) or MinGW-w64 with `g++` on PATH.
 ## Test
 
 ```bat
+rem static gates
+python tools\check_i18n.py
+python tools\audit_i18n.py
+python tools\check_help_align.py
+
+rem suites that drive the built binary
+python tests\test_lang_names.py
 python tests\test_menu_order.py
-python tests\test_footprint_report.py
+python tests\test_residue_report.py
 python tests\test_registry_policy.py
 python tests\test_language.py
+python tests\test_icons.py
 python tests\test_tray_cleanup.py
 python tests\test_smoke.py
 ```
 
-All seven must pass before a pull request. They drive the real binary, so build
+`make test` runs all eleven gates: three static checks and eight suites. They
+must pass before a pull request; the suites drive the real binary, so build
 first. Three rules for tests:
 
 - every suite asserts and exits non-zero on failure — printing a report for a
@@ -50,8 +59,17 @@ first. Three rules for tests:
 - C++17, Win32 only. No third-party libraries, no C++ exceptions across the
   Win32 boundary, no `std::filesystem` (it pulls in more than the exe saves).
 - Comments explain *why*, not *what*. A comment that restates the code is noise.
-- Every user-visible string goes through `T(L"中文", L"English")` from
-  `src/i18n.h`. A string that exists in only one language is a bug.
+- Every user-visible string goes through `T(L"简体中文", L"English")` from
+  `src/i18n.h`. Add the Traditional Chinese, Japanese and Korean forms to
+  `tools/translations.json`, keyed by the exact Simplified Chinese literal, then
+  run `python tools\sync_i18n.py` (it updates the key list, reports anything
+  still untranslated, and regenerates `src/i18n_extra.cpp`). A string missing
+  from any of the five languages is a bug; `tools/check_i18n.py` enforces
+  coverage and `tools/audit_i18n.py` enforces quality on every build.
+- A language is named in exactly one place, `LangName()` in `src/i18n.h`, and
+  the name never varies with the UI language. Do not hardcode a language name in
+  a translated string: that is how the report header ended up claiming every
+  report was written in Chinese.
 - Check every `PostMessage`/`Reg*` return value when a failure would be silent.
 - Keep the exe small: `-Os`, static CRT, no iostream.
 
@@ -59,8 +77,16 @@ first. Three rules for tests:
 
 - One logical change per commit; the message says what breaks without it.
 - Update `CHANGELOG.md` under an `Unreleased` heading for anything user-visible.
-- If you add a flag, add it to `UsageText()` in `src/main.cpp` in both languages,
-  and to the table in both usage documents.
+- If you add a flag, add it to `UsageText()` in `src/main.cpp` in all five
+  languages, and to the table in both usage documents. Keep the exit-code
+  contract intact: `0` success, `1` residues found by `--status`, `2` usage
+  error. A token the parser does not recognise must fail loudly — falling
+  through to "start the tray app" is how a typo becomes a silent no-op.
+
+## Releasing
+
+[docs/RELEASING.md](docs/RELEASING.md) lists every file that carries the version,
+the eleven gates, and how an artefact is built, verified and published.
 
 ## Docs
 
@@ -69,6 +95,7 @@ regenerated after any change to the menu or the report:
 
 ```bat
 python tools\capture-screenshots.py zh
+python tools\capture-screenshots.py en
 ```
 
 The script drives the real windows, so build first and close anything that would

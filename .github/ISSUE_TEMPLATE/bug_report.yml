@@ -1,0 +1,112 @@
+name: Bug report
+description: Something behaves differently from the documentation
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing: run `ExplorerF11.exe --status --lang en` and keep the
+        output. Most reports turn out to be a residue the reporter did not
+        expect, or a window class this build does not recognise.
+
+        For anything that could be a security issue, use the private channel in
+        [SECURITY.md](../blob/main/SECURITY.md) instead of this form.
+
+  - type: input
+    id: version
+    attributes:
+      label: ExplorerF11 version
+      description: Output of `ExplorerF11.exe --version`.
+      placeholder: ExplorerF11 1.0.0
+    validations:
+      required: true
+
+  - type: input
+    id: windows
+    attributes:
+      label: Windows build
+      description: "`winver` — the full build number, not just \"Windows 11\"."
+      placeholder: Windows 11 26H2, build 26300.9974
+    validations:
+      required: true
+
+  - type: dropdown
+    id: arch
+    attributes:
+      label: Architecture
+      options:
+        - x64
+        - arm64 (emulated)
+        - other (say which below)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: language
+    attributes:
+      label: UI language in use
+      options:
+        - 简体中文
+        - 繁體中文
+        - English
+        - 日本語
+        - 한국어
+    validations:
+      required: true
+
+  - type: input
+    id: command
+    attributes:
+      label: Command line
+      description: How the program was started, including any flags.
+      placeholder: ExplorerF11.exe --install
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: The behaviour you saw, and the window or folder it happened to.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      description: Quote the line of documentation you are measuring against, if there is one.
+    validations:
+      required: true
+
+  - type: textarea
+    id: status
+    attributes:
+      label: Residue report
+      description: Output of `ExplorerF11.exe --status --lang en`.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: |
+        Only if you started with `--log`. The file is `%TEMP%\ExplorerF11.log`;
+        it contains window titles of folders you opened, so redact what you need to.
+      render: text
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: shell-mods
+    attributes:
+      label: Shell modifications
+      description: Anything that changes Explorer's window classes or the command bar.
+      options:
+        - label: ExplorerPatcher
+        - label: StartAllBack
+        - label: Windhawk or another shell-hook tool
+        - label: None of the above

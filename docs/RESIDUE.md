@@ -1,11 +1,12 @@
-# Footprints
+# Residues
 
 Everything this tool can leave on a machine, where it lives, who writes it, and
 how to remove it. `ExplorerF11.exe --status` prints the same list with live values.
 
-Three groups, eleven items. **Nothing in the first two groups exists after a
-fresh run with the default configuration** — the list is what *can* appear, not
-what does.
+Three groups, eleven items. The inventory is an enumeration of possible state,
+not a claim about the current machine: with default settings and a first run,
+none of the items in groups A or B exists. `--status` reports the live value of
+every row, including rows that are absent.
 
 ## A. Written by this program
 
@@ -18,7 +19,9 @@ what does.
 
 The settings key can hold at most three values: `Tabs`, `InitialSweep` and
 `Language`. `--clean` deletes the whole key, so a clean also resets the UI
-language to the system default.
+language to the system default. `Language` is written only when the selected
+language differs from the system language; its accepted tags are `zh`,
+`zh-Hant`, `en`, `ja` and `ko`.
 
 Item 4 never touches disk. It is listed because a user who inspects the process
 deserves to know it exists, and because it is the one piece of state that
@@ -28,7 +31,7 @@ survives the tool's own exit.
 
 None of these are written by ExplorerF11. Windows creates them for any program
 that starts, shows a tray icon, or is launched from Explorer. They are listed
-because "I ran it once" is still a footprint, and because most cleanup tools
+because "I ran it once" is still a residue, and because most cleanup tools
 quietly ignore them.
 
 | # | Item | Location | Written when | Typical size | `--clean` |
@@ -61,7 +64,7 @@ Everything removable, worst case: **under 6 KB** (prefetch excluded, it is a
 cache Windows manages itself). Nothing grows with use: no history, no database,
 no cache of our own, and no log unless you ask for one.
 
-## Why the default is zero
+## Configuration write policy
 
 Four rules, enforced in `config.cpp`:
 
@@ -93,13 +96,13 @@ Automated:
 ```powershell
 ExplorerF11.exe --status           # full report
 ExplorerF11.exe --status --lang en
-if ($LASTEXITCODE -eq 0) { "clean" } else { "traces present" }
+if ($LASTEXITCODE -eq 0) { "clean" } else { "residues present" }
 ```
 
 ## Removing everything
 
 ```powershell
-ExplorerF11.exe --clean     # removes groups A (1-3), B, C; leaves the exe
+ExplorerF11.exe --clean     # removes groups A (1-3) and B; never the exe
 Remove-Item .\ExplorerF11.exe
 ```
 

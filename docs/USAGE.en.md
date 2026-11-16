@@ -1,8 +1,8 @@
 # Usage
 
 Everything a user needs. Technical details live in
-[ARCHITECTURE.md](ARCHITECTURE.md); the footprint inventory is in
-[FOOTPRINTS.md](FOOTPRINTS.md). 中文: [USAGE.zh-CN.md](USAGE.zh-CN.md).
+[ARCHITECTURE.md](ARCHITECTURE.md); the residue inventory is in
+[RESIDUE.md](RESIDUE.md). 中文: [USAGE.zh-CN.md](USAGE.zh-CN.md).
 
 ## What it does
 
@@ -31,8 +31,8 @@ with ExplorerPatcher and StartAllBack).
 ## Three ways to use it
 
 **Try it.** Double-click the exe; a tray icon appears. Open a new folder window
-and compare it with one that was already open. Not convinced? Tray → *Clear all
-traces and exit*, then delete the exe.
+and compare it with one that was already open. If you decide against keeping it,
+open *Residue report* from the tray, use *Clean residues…*, then delete the exe.
 
 **Keep it running.** Double-click and leave it. It idles in the tray and handles
 new windows as they appear.
@@ -48,7 +48,7 @@ If you move it after enabling autostart, tick the item again.
 Fixed five-part layout, top to bottom:
 
 ```
-ExplorerF11 6.2.0  ·  3 windows accelerated (5 tabs)   <- grey, not clickable
+ExplorerF11 1.0.0  ·  3 windows accelerated (5 tabs)   <- grey, not clickable
 ────────────────────────────
 Apply to all open windows
 Apply to the active window
@@ -57,9 +57,9 @@ Pause acceleration
 ✓ Re-accelerate the window on new tabs
 ✓ Accelerate windows open at start-up
 ✓ Start with Windows
-Language  ▸  中文（简体） / English
+Language  ▸  简体中文 / 繁體中文 / English / 日本語 / 한국어
 ────────────────────────────
-Footprint report (2 items)…
+Residue report (2 items)…
 ────────────────────────────
 Exit
 ```
@@ -73,11 +73,12 @@ Exit
 | Re-accelerate the window on new tabs | On by default. Pressing `+` redoes the **containing window**, not just that tab. Turning it off avoids the whole-window flash |
 | Accelerate windows open at start-up | On by default. Off means only windows created later are handled |
 | Start with Windows | The tick reflects what will actually happen, even after a Task Manager disable |
-| Language | Submenu with two radio rows: **中文（简体）** and **English**. Applies immediately and is remembered |
-| Footprint report | Opens the inventory. The report is read-only; the only action that deletes is *Clean up…* inside it, and it asks first |
+| Language | Five-way radio submenu: **简体中文**, **繁體中文**, **English**, **日本語**, **한국어**. Applies immediately and is remembered |
+| Residue report | Opens the inventory. The report is read-only; the only action that deletes is *Clean residues…* inside it, and it asks first |
 
-*Clear* is deliberately not adjacent to *Exit*: one separator and a trailing `…`
-in between. A misclick there costs a reinstall.
+The destructive action is deliberately inside the report window, one separator
+above *Exit*, and marked with a trailing `…`: the user sees exactly what will be
+removed before confirming.
 
 ### The unit is the window, not the tab
 
@@ -95,7 +96,7 @@ choice:
   unit of the action; the bracket is how many tabs those windows currently hold.
   A window without tabs (an older Explorer) omits the bracket.
 
-The footprint report's fourth item, *Window marks*, prints the same sentence from
+The residue report's fourth item, *Window marks*, prints the same sentence from
 the same function, so the menu, the tooltip and the report cannot show two
 different numbers.
 
@@ -104,20 +105,20 @@ nothing to translate in your head.
 
 ## The report window
 
-*Footprint report (N items)…* opens exactly what `--status` prints. It starts by
+*Residue report (N items)…* opens exactly what `--status` prints. It starts by
 saying where the numbers come from:
 
 ```
-ExplorerF11 6.2.0 - footprint report
+ExplorerF11 1.0.0 - residue report
 program: D:\Tools\ExplorerF11.exe
 time:    2026-11-15 11:20:31 (local) - UI language: English
-scope:   11 possible locations in 3 groups; each one is checked below, including
-         the ones that are absent.
+scope:   11 possible locations in 3 groups; every one is listed below with its
+         result, present or absent.
 ================================================================
 
 Verdict: 2 items to remove, 372 B in total.
       this program: 1 item (164 B); recorded by Windows: 1 item (208 B).
-      Items marked "removable" are deleted by "Clean up…" in this window; the exe is not.
+      Items marked "removable" are deleted by "Clean residues…" in this window; the exe is not.
 ```
 
 Then three groups — written by this program, recorded by Windows, program file —
@@ -141,9 +142,9 @@ and per item four fields:
 Absent locations are listed too, marked *absent*: a report that only shows dirt
 cannot prove that the rest is clean.
 
-Three buttons: **Copy all / Clean up… / Close**.
+Three buttons: **Copy all / Clean residues… / Close**.
 
-- **Clean up…** is the only place in the program that deletes anything; the tray
+- **Clean residues…** is the only place in the program that deletes anything; the tray
   menu deliberately has no second copy. It asks first, listing each category it is
   about to remove. Answer *No* and nothing changes. On *Yes* the list refreshes in
   place and **the tool keeps running**, so you can check the result.
@@ -162,10 +163,10 @@ Three buttons: **Copy all / Clean up… / Close**.
 | none | run in the tray | nothing by default |
 | `--install` | run in the tray, tick "Start with Windows" | one Run value |
 | `--uninstall` | remove the autostart entry only, nothing else | deletes one value |
-| `--status` | print the full report; exit 0 = clean, 1 = removable traces | read-only |
+| `--status` | print the full report; exit 0 = clean, 1 = removable residues | read-only |
 | `--clean`, `--purge` | remove everything removable, then exit (stops a running instance first) | deletes |
 | `--menu` | print the tray menu as text (tests and troubleshooting) | read-only |
-| `--lang zh\|en` | UI language for this run | read-only |
+| `--lang <tag>` | UI language for this run: `zh`, `zh-Hant`, `en`, `ja`, `ko` | read-only |
 | `--log` | write `%TEMP%\ExplorerF11.log` | creates one file |
 | `--no-initial` | skip windows that were already open (this run only) | read-only |
 | `--quiet` | never show a dialog, for scripts | read-only |
@@ -176,21 +177,35 @@ Scripting the verdict:
 
 ```powershell
 ExplorerF11.exe --status --quiet
-if ($LASTEXITCODE -eq 0) { "clean" } else { "traces present" }
+if ($LASTEXITCODE -eq 0) { "clean" } else { "residues present" }
 ```
+
+Exit codes:
+
+| Code | Meaning |
+|---|---|
+| 0 | the requested action succeeded; for `--status`, the machine is clean |
+| 1 | `--status` found removable residues |
+| 2 | usage error: an unknown option, `--lang` without a value, or a `--lang` value that names no supported language |
+
+A usage error echoes the offending token and points at `--help`. Unknown options
+are never ignored: `ExplorerF11.exe --cleen` must not start a tray instance that
+looks like it did something.
 
 ## Language
 
 Four sources, highest priority first:
 
-1. `--lang zh` / `--lang en` (this run only);
-2. `EXPLORERF11_LANG=zh` (this run only; portable copies and scripts);
+1. `--lang <tag>` (this run only);
+2. `EXPLORERF11_LANG=<tag>` (this run only; portable copies and scripts);
 3. the choice made in tray → *Language* (stored, used on the next start);
 4. the system language (regional format, then UI language).
 
-The first two are "do it this time" instructions, so they override the stored
-choice; the stored choice overrides the system language, which is what makes a
-tray click survive a restart.
+Accepted tags are `zh`, `zh-Hant`, `en`, `ja` and `ko`; common regional aliases
+such as `zh-tw`, `zh-cn`, `ja-jp` and `ko-kr` are normalised to the same five
+languages. The first two sources are "do it this time" instructions, so they
+override the stored choice; the stored choice overrides the system language,
+which is what makes a tray click survive a restart.
 
 **Storage follows the same rule as every setting.** `HKCU\Software\
 ExplorerF11\Language` exists only while the chosen language differs from the
@@ -233,9 +248,9 @@ That is the cost of the fullscreen round trip. Turn *Re-accelerate the window on
 new tabs* off if it bothers you; the window itself stays accelerated.
 
 **Where do I change the language?**
-Tray → *Language*. Both rows are written in their own script — 中文（简体） and
-English — so the menu stays usable even after switching to a language you do not
-read. The change is immediate; no restart.
+Tray → *Language*. All five rows are written in their own script — 简体中文,
+繁體中文, English, 日本語 and 한국어 — so the menu stays usable even after
+switching to a language you do not read. The change is immediate; no restart.
 
 **I switched the language but the menu did not change.**
 Check whether you started it with `--lang`, or have `EXPLORERF11_LANG` set: both
@@ -266,6 +281,6 @@ store, MuiCache, UserAssist, and Prefetch when elevated).
 deleted, and the report does not pretend otherwise.
 
 **Will it mess up my registry?**
-It touches only the 11 locations listed in [FOOTPRINTS.md](FOOTPRINTS.md), and
+It touches only the 11 locations listed in [RESIDUE.md](RESIDUE.md), and
 nothing else. When in doubt, run `--status`: that is the tool's own account of
 itself.

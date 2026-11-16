@@ -17,12 +17,12 @@ src/
   app.h          every name the tool writes into the system, in one place
   i18n.h         language resolution + T(zh, en); switchable while running
   config.h/.cpp  settings and autostart (HKCU only)
-  footprint.h/.cpp  enumerate, report and remove every trace
+  residue.h/.cpp  enumerate, report and remove every residual state
   main.cpp       window, tray, shell hooks, menu, report window, CLI
 ```
 
-Dependencies point one way: `main` → `footprint` → `config` → `app`/`i18n`.
-Nothing in `config.cpp` or `footprint.cpp` opens a window or shows a dialog, which
+Dependencies point one way: `main` → `residue` → `config` → `app`/`i18n`.
+Nothing in `config.cpp` or `residue.cpp` opens a window or shows a dialog, which
 is what makes them testable from a console.
 
 ## Event model
@@ -80,10 +80,10 @@ second F11 cycle on a window that is still animating.
 
 ## What the count means
 
-`MarkedWindows()` in `footprint.cpp` walks the top-level windows once, counts the
+`MarkedWindows()` in `residue.cpp` walks the top-level windows once, counts the
 ones carrying the mark, and for each counts its direct `ShellTabWindowClass`
 children. The same function formats the sentence ("1 window accelerated (2 tabs)"),
-and the tooltip, the menu header and the footprint report all call it. No other
+and the tooltip, the menu header and the residue report all call it. No other
 file builds a count of its own, so the three surfaces cannot disagree.
 
 The unit is the window because the action is: `PostF11Raw` posts to the frame
@@ -107,15 +107,16 @@ survives. It never runs two copies: the mutex is released before spawning.
 
 ## Resource profile
 
-Measured with `test_smoke.py` on 26300.9974, one folder window open:
+Measured with `test_smoke.py` on 26300.9974, one folder window open, after the
+start-up burst has settled (two minutes):
 
 | | Idle | Notes |
 |---|---|---|
-| Private bytes | 3.5 MB | no CRT heap growth after start-up |
-| Handles | 148 | of which 1 is ours (the single-instance mutex); the rest are the window, hooks, tray icon and thread pool |
-| Threads | 4 → 1 | 3 are `TpWorkerFactory` helpers that exit after ~45 s idle |
-| CPU | 0 % | blocked in `GetMessageW` |
-| Disk | 333 KB | static CRT, `-Os`, stripped; 60 KB of it is the two multi-size icons |
+| Private bytes | 2.3 MB | no CRT heap growth after start-up |
+| Handles | 156 | of which 1 is ours (the single-instance mutex); the rest are the window, hooks, tray icon and thread pool |
+| Threads | 4 → 1 | 3 are `TpWorkerFactory` helpers the shell hook starts; they exit after ~45 s idle |
+| CPU | 0.031 s cumulative | blocked in `GetMessageW`; 0.03 s of CPU per two minutes is start-up cost, not steady state |
+| Disk | 366 KiB | static CRT, `-Os`, stripped; 60 KB of it is the two multi-size icons |
 
 ## Icons and resources
 
@@ -148,7 +149,11 @@ shell caches its text at `NIM_ADD` time. Two mechanisms keep it honest:
 2. **Refresh before display.** `NIM_SETVERSION` is set to `NOTIFYICON_VERSION_4`,
    which delivers `NIN_POPUPOPEN` just before the shell draws the tooltip; the
    handler rebuilds the text there. Even a tooltip that was cached minutes ago is
-   correct by the time it becomes visible.
+   correct by the time it becomes visible. Under version 4 the shell suppresses
+   the standard tooltip unless `NIF_SHOWTIP` is present, and `NIM_MODIFY`
+   *replaces* the flag set rather than merging it. Every modify carrying `NIF_TIP`
+   therefore re-asserts `NIF_SHOWTIP`; omitting it is what made the tooltip
+   disappear entirely.
 
 The popup also carries the state: blue bolt while running, grey bolt while paused.
 
@@ -158,11 +163,12 @@ The popup also carries the state: blue bolt while running, grey bolt while pause
 value equal to its default deletes it, and deleting the last value deletes the
 key. A fresh run therefore creates nothing, and "reset to defaults" is
 indistinguishable from "never installed". The key can hold three values: `Tabs`,
-`InitialSweep` (both `REG_DWORD`) and `Language` (`REG_SZ`, `zh` or `en`).
+`InitialSweep` (both `REG_DWORD`) and `Language` (`REG_SZ`, one of `zh`,
+`zh-Hant`, `en`, `ja`, `ko`).
 
 `Language` uses the system language as its default: choosing the language the
-machine already speaks deletes the value instead of writing it, so the language
-feature cannot turn a zero-footprint install into a one-value install.
+machine already speaks deletes the value instead of writing it, so changing the
+UI language does not by itself introduce a persisted setting.
 
 Autostart is one `REG_SZ` under the per-user `Run` key, containing a quoted path
 and no arguments. Because preferences are in the registry rather than on the
@@ -181,16 +187,34 @@ the tick mark always matches what will actually happen at logon.
 const wchar_t *T(const wchar_t *zh, const wchar_t *en);
 ```
 
-Every user-visible string is written at its point of use with both translations
-side by side. For a single-binary utility this beats a resource DLL: no build step,
-no satellite files, no `LoadString` failure mode, and a reviewer can see at a
-glance whether a string was forgotten in one language.
+Simplified Chinese and English are written at the point of use, so the default
+and fallback need no lookup. Traditional Chinese, Japanese and Korean are stored
+in `tools/translations.json`, keyed by the exact Simplified Chinese source
+string; `tools/gen_i18n.py` emits `src/i18n_extra.cpp` from it. Keying by source
+text rather than by numeric id means inserting a new `T()` call in the middle of
+a file cannot shift the translations out of alignment.
+
+`tools/check_i18n.py` is a build gate: it extracts every `T()` call, requires all
+five languages to be present and non-empty, checks that `%d` and environment
+placeholders match, and fails if the generated table is stale. That gives a
+single-binary utility the safety of a resource pipeline without satellite files
+or a `LoadString` failure mode. `tools/audit_i18n.py` covers what a coverage
+gate cannot see: a value written in the wrong script, ASCII punctuation glued to
+CJK text, and a target term that contradicts the one chosen elsewhere.
+
+**A language is named in exactly one place.** `LangName()` returns the endonym
+(简体中文 / 繁體中文 / English / 日本語 / 한국어) and is used by the menu rows and by
+the report header alike. The name is a constant, not a translated string: a
+selection control has to stay readable after a mis-click, and a state
+description has to agree with the control that produced it. Baking the name into
+a translated fragment - the obvious shortcut - produces a report that claims one
+fixed language no matter which one is active.
 
 Resolution order, highest priority first:
 
 | Source | Scope | Implemented by |
 |---|---|---|
-| `--lang zh\|en` | this run | argument parser sets `g_langExplicit` |
+| `--lang <tag>` | this run | argument parser sets `g_langExplicit` |
 | `EXPLORERF11_LANG` | this run | `EnvLang()` |
 | `Language` value | persistent | `LoadLanguage()` |
 | system language | default | `LocaleLang()` |
@@ -207,9 +231,27 @@ English UI on a Chinese region is common and those users expect Chinese.
 - the report window is the only long-lived surface, so `RelocalizeStatus()` sets
   the title, the three buttons and the body again when the language changes.
 
-The radio pair inside the submenu is deliberately written in each language's own
-script (中文（简体） / English). A user who switches to a language they cannot read
-still recognises the row that switches back.
+### Per-language conventions
+
+The five shipped languages do not share punctuation, and mixing two styles inside
+one value is the defect `tools/audit_i18n.py` exists to catch:
+
+| Language | Punctuation | Notes |
+|---|---|---|
+| zh-Hant | full-width `，。：；（）` | mainland wording (`文件`, `默认`, `选项卡`) is rejected outright |
+| ja | full-width `，。：；（）`, no space beside a full-width bracket | katakana compounds keep the Microsoft space (`タスク マネージャー`) |
+| ko | ASCII `, . : ( )` | a counter is written tight against the numeral (`2개`), a unit noun is separated (`12 바이트`) |
+
+Report field labels are padded to a common column within a language, never
+across languages: `程序：` and `program: ` are both correct even though they are
+six and nine columns wide. The header fields and the per-item fields are separate
+blocks with different label widths, so each is aligned independently.
+`tools/check_help_align.py` does the same job for the `--help` option column.
+
+The five radio rows are deliberately written in each language's own script
+(简体中文 / 繁體中文 / English / 日本語 / 한국어), in the same order in every UI
+language. A user who switches to a language they cannot read still recognises
+the row that switches back, and `test_lang_names.py` pins that invariant.
 
 ## Tests
 
@@ -221,14 +263,19 @@ internals. Two consequences worth keeping:
   submenus, as indented rows — so the layout test cannot drift from the UI.
 - every test that changes state restores it, including the autostart entry and
   the stored language. The clean test only ever answers *No* to the confirmation,
-  so it can run on a machine with real traces without deleting them.
+  so it can run on a machine with real residues without deleting them.
 
-Seven suites, each asserting and returning a non-zero exit code on failure:
+Eight suites plus three static gates, each returning a non-zero exit code on
+failure:
 
-| Suite | Proves |
+| Gate | Proves |
 |---|---|
-| `test_menu_order.py` | exact rows, groups, ticks, language radio pair |
-| `test_footprint_report.py` | report truth, both languages, live refresh, single confirmed clean entry |
+| `tools/check_i18n.py` | every `T()` key translated in five languages, placeholders intact, generated table current |
+| `tools/audit_i18n.py` | no wrong-script characters, no ASCII punctuation in CJK prose, no contradicting term |
+| `tools/check_help_align.py` | the `--help` option column starts on one offset in every language |
+| `test_lang_names.py` | one name per language, identical in all five UI languages, matching the report header |
+| `test_menu_order.py` | exact rows, groups, ticks, five-way language radio group |
+| `test_residue_report.py` | report truth, five languages, live refresh, single confirmed clean entry |
 | `test_registry_policy.py` | zero writes by default, defaults delete themselves |
 | `test_icons.py` | icons and version block in the exe, tooltip refresh contract |
 | `test_language.py` | resolution order, persistence, zero-write rule |
