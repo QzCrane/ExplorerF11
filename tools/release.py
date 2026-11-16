@@ -420,7 +420,8 @@ def stage_gates(cfg):
     note("re-running the suite: " + why)
     started = time.time()
     run(["make", "test"], timeout=1800)
-    note("thirteen gates passed on this tree in %.1fs" % (time.time() - started))
+    note("all %d gates passed on this tree in %.1fs"
+         % (F.GATES, time.time() - started))
 
 
 def stage_screenshots(cfg):

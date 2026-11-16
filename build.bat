@@ -13,6 +13,10 @@ rem are the flags this file documents - there is no second copy to drift.
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
 if not exist dist mkdir dist
+rem Intermediates go to dist\obj, the same directory the Makefile uses. Written
+rem to dist\ instead they sit next to the artefact and look like things worth
+rem keeping long after the link that needed them.
+if not exist dist\obj mkdir dist\obj
 
 set MODE=%1
 rem `set FORCE=msvc` inside a parenthesised block captures the space before the
@@ -55,9 +59,9 @@ if errorlevel 1 (
     echo [ERROR] windres.exe not found; install the full MinGW-w64 toolchain.
     exit /b 1
 )
-windres -I src src\app.rc -O coff -o dist\app.res
+windres -I src src\app.rc -O coff -o dist\obj\app.res
 if errorlevel 1 exit /b 1
-set SRC=src\main.cpp src\config.cpp src\residue.cpp src\i18n_extra.cpp dist\app.res
+set SRC=src\main.cpp src\config.cpp src\residue.cpp src\i18n_extra.cpp dist\obj\app.res
 if /i "%MODE%"=="debug" (
     g++ -std=c++23 -O0 -g -municode -Wall -Wextra %SRC% -o dist\ExplorerF11.exe ^
         -luser32 -lshell32 -ladvapi32
@@ -83,7 +87,7 @@ if errorlevel 1 (
 rem cl does not compile .rc files the way g++ does: rc.exe builds the resource
 rem object first, then the linker takes it as one more input. Skip this step and
 rem the exe ends up with no icon and no version block.
-rc /nologo /I src /fo dist\app.res src\app.rc
+rc /nologo /I src /fo dist\obj\app.res src\app.rc
 if errorlevel 1 exit /b 1
 rem /utf-8 is mandatory, not cosmetic: the sources are UTF-8 without a BOM and
 rem carry CJK wide literals. Without it cl decodes them with the system ANSI
@@ -91,12 +95,12 @@ rem code page, so a Japanese string compiles correctly only on a Japanese
 rem machine and turns to mojibake everywhere else.
 if /i "%MODE%"=="debug" (
     cl /nologo /std:c++latest /utf-8 /EHsc /W4 /Zi /Od /D_DEBUG ^
-       src\main.cpp src\config.cpp src\residue.cpp src\i18n_extra.cpp dist\app.res ^
-       /Fo:dist\ /Fe:dist\ExplorerF11.exe /link /SUBSYSTEM:CONSOLE
+       src\main.cpp src\config.cpp src\residue.cpp src\i18n_extra.cpp dist\obj\app.res ^
+       /Fo:dist\obj\ /Fe:dist\ExplorerF11.exe /link /SUBSYSTEM:CONSOLE
 ) else (
     cl /nologo /std:c++latest /utf-8 /EHsc /W4 /O2 /GL /DNDEBUG ^
-       src\main.cpp src\config.cpp src\residue.cpp src\i18n_extra.cpp dist\app.res ^
-       /Fo:dist\ /Fe:dist\ExplorerF11.exe /link /SUBSYSTEM:WINDOWS /LTCG
+       src\main.cpp src\config.cpp src\residue.cpp src\i18n_extra.cpp dist\obj\app.res ^
+       /Fo:dist\obj\ /Fe:dist\ExplorerF11.exe /link /SUBSYSTEM:WINDOWS /LTCG
 )
 if errorlevel 1 exit /b 1
 

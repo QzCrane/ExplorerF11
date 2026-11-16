@@ -270,6 +270,32 @@ def state():
     }
 
 
+def set_clipboard(text):
+    """Put a known value on the clipboard, so a later read can tell stale from new."""
+    k32 = ctypes.windll.kernel32
+    k32.GlobalAlloc.restype = wintypes.HGLOBAL
+    k32.GlobalLock.argtypes = [wintypes.HGLOBAL]
+    k32.GlobalLock.restype = ctypes.c_void_p
+    k32.GlobalUnlock.argtypes = [wintypes.HGLOBAL]
+    if not u.OpenClipboard(None):
+        return False
+    try:
+        u.EmptyClipboard()
+        cb = (len(text) + 1) * ctypes.sizeof(ctypes.c_wchar)
+        h = k32.GlobalAlloc(0x0002, cb)          # GMEM_MOVEABLE
+        if not h:
+            return False
+        p = k32.GlobalLock(h)
+        if not p:
+            return False
+        ctypes.memmove(p, ctypes.create_unicode_buffer(text), cb)
+        k32.GlobalUnlock(h)
+        u.SetClipboardData(13, h)                 # CF_UNICODETEXT
+    finally:
+        u.CloseClipboard()
+    return True
+
+
 def clipboard_text():
     k32 = ctypes.windll.kernel32
     k32.GlobalLock.argtypes = [wintypes.HGLOBAL]
@@ -447,18 +473,21 @@ if win:
                text.count("谁写：") == out.count("谁写："))
     check_true("标题正确", "残留报告" in window_text(win), window_text(win))
 
-    u.PostMessageW(win, 0x0111, 2002, 0)   # IDC_STATUS_COPY
-    # Read inside the poll and keep the value that satisfied it. Reading again
-    # afterwards re-took the system clipboard lock for no reason and could
-    # disagree with the read that had just succeeded.
-    seen = {"clip": ""}
-
-    def copied():
-        seen["clip"] = clipboard_text()
-        return seen["clip"].startswith("ExplorerF11 ")
-
-    winutil.wait_until(copied, timeout=5.0)
-    clip = seen["clip"]
+    # The clipboard is the one piece of shared state this suite competes for
+    # with every other process, and reading it is not free: an OpenClipboard
+    # here denies the app's own OpenClipboard, which it does not retry. So the
+    # assertion must not poll for the result - and it must not pass on a report
+    # left behind by an earlier run either, which is what it did: the copy had
+    # stopped working and the stale text kept the line green. Plant a value the
+    # app would never write, click, let the click land, then read once.
+    set_clipboard("sentinel: copied nothing")
+    clip = ""
+    for _ in range(3):
+        u.PostMessageW(win, 0x0111, 2002, 0)   # IDC_STATUS_COPY
+        time.sleep(0.15)
+        clip = clipboard_text()
+        if clip.startswith("ExplorerF11 "):
+            break
     check_true("「复制全部」把报告放进剪贴板", clip.startswith("ExplorerF11 "), str(len(clip)))
 
     print("\n==== 6. 语言切换即时作用于已打开的窗口 ====")
