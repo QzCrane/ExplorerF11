@@ -258,6 +258,11 @@ one machine at one sitting. `private` is committed private bytes, the number tha
 represents what the program actually owns; `ws` is the working set, which is what
 Task Manager shows and is dominated by shared DLL pages.
 
+Private bytes move by about 10 KB between runs - 1.76 and 1.77 MB are both this
+build - so the documents quote the range. A document that pins one of them is
+wrong half the time, and the release gate would then either fail on a machine
+that sampled the other value or, worse, be ignored.
+
 | State | private | ws |
 |---|---|---|
 | empty Win32 message loop, same flags | **1584 KB** | 7.8 MB |
@@ -368,6 +373,92 @@ evidence, not opinion.
 | Cache the ten registry probes while the report is open | Only **1 of the 11 rows** depends on window state (row 11, the in-memory marks), so a window event genuinely cannot change the other ten — the current rebuild is 1.0 ms of work to refresh one row. It is still declined, because the invalidation set cannot be made complete: launching a second copy of the exe (which exits on the mutex) is recorded by Windows in `UserAssist`, and nothing in this process observes that. A report that can be silently stale is the one thing this program may not ship. The honest alternative — re-probe on open, on language change, on clean, and on every write we perform — would be a product decision about what the window promises, not a performance change. |
 | Cache residue probes for the process lifetime | Same reason, without even the partial invalidation argument. A report that can be minutes stale is worse than a report that costs 1 ms, and the program's whole claim is that it tells the truth about what it left behind. |
 | Direct `RegQueryValueExW` lookup in `UserAssist` by ROT13 path | Could prove presence for one path, but the report needs a count and a byte total across every match, and a miss would fall back to the scan anyway. An unverifiable fast path on a "nothing may be missed" surface is not worth it. The needle rotation above takes the same cost out without giving up the scan. |
+
+## The release pipeline
+
+`make release` is sixteen stages. It took 135 s, of which about 8 s was work:
+the same thirteen gates ran twice, and the suites slept.
+
+### The gates ran twice
+
+`refresh-facts` has to run every gate — it derives the assertion count from
+them. `gates` then ran `make test`: the same thirteen commands, on a tree that
+had changed only in the two files the first run wrote. Two runs of one question
+answer it once.
+
+`refresh-facts` now records what it proved and the bytes it proved it on.
+`tools/treefp.py` fingerprints every file a gate can read; the `gates` stage
+recomputes the fingerprint and reuses the record when it matches. Any other
+bytes invalidate it, including a regenerated screenshot, so the reuse is exact
+rather than optimistic. **62 s → 0.01 s.**
+
+### The suites slept
+
+One pass was 62.5 s: **46 s of `time.sleep`** and **17 s of starting a shell**
+to do what one API call does. Per suite, before and after:
+
+| Suite | Before | After | What the time was |
+|---|---|---|---|
+| `test_registry_policy` | 19.77 s | 0.44 s | 7 × 1.1 s `Stop-Process`, 7 × 0.4 s wait, 5 × 0.5 s after a menu command |
+| `test_language` | 12.48 s | 0.63 s | 15 sleeps, 1.3 s for a start-up, 0.8 s per language switch |
+| `test_residue_report` | 10.43 s | 2.34 s | 13 sleeps from 0.1 s to 1.4 s |
+| `test_icons` | 9.69 s | 0.12 s | 8 version queries, each a shell start |
+| `test_smoke` | 7.17 s | 0.96 s | 5.6 s of sleeps, two `taskkill`, one resource query through a shell |
+| four static gates | 1.16 s | 0.82 s | — |
+| **`make test`** | **62.5 s** | **6.2 s** | |
+
+Every sleep was a guess about how long something takes, and each was wrong in
+both directions: 1.6 s for a start-up that takes 45 ms, 1.2 s for a repaint that
+had already happened. `tools/win32util.py` replaces the guesses with
+observations, and each one is a different fact:
+
+| Instead of | Wait for | Cost |
+|---|---|---|
+| `taskkill /F /IM` + 0.5 s | `TerminateProcess` + the process handle reaching exit | 13 ms |
+| `Start-Sleep 1.6` after launch | the window exists **and** `WaitForInputIdle` returns | 45 ms |
+| 0.5-0.8 s after a menu command | the registry value that command writes | 5 ms |
+| shell `Get-Item ... .VersionInfo` | `VerQueryValueW` on the loaded image | 1 ms |
+| shell `Get-Process` | `GetProcessMemoryInfo` + `GetProcessHandleCount` | 1 ms |
+
+`WaitForInputIdle` is not optional. The start-up sweep is *posted* from
+`WM_CREATE`, so a window that merely exists is one message too early: a test that
+reads the registry at that moment can read it before the sweep. The idle check
+returns when the queue is empty, which is the first moment the start-up work is
+finished.
+
+One case genuinely needs the clock. The report's header stamps the time it was
+built, at one-second resolution, so a rebuild inside the same second produces
+byte-identical text and the test cannot see it. The suite now waits for the
+second to tick *before* posting the command (at most 0.5 s, average 0.5) and
+then polls; the 1.2 s it replaced was slower and only passed when the rebuild
+happened to land in a different second.
+
+### What is left, and why it stays
+
+| Stage | Time | Why it cannot be cheaper |
+|---|---|---|
+| `build` | 7.87 s | A static-CRT release build from scratch. `make -j4` measures the same 7.7 s: the dominant step is the single link, and splitting the translation units to parallelise the compiles would change the binary — which is pinned by the hash on the release page. |
+| `facts` | 5.0-5.7 s | Thirteen processes. The suites themselves are the floor. |
+| `preflight` | 3.08 s | Three network round trips: `git fetch`, `git ls-remote`, `gh auth status`. |
+| `screenshots` | 1.94 s | Two app launches and four screen grabs. |
+| `gates` | 0.01 s | A fingerprint comparison, by construction. |
+| **dry run to `notes`** | **18.6 s** | was 135 s |
+
+Two rejected optimisations, with the number that settles them:
+
+- **Run the thirteen gates in parallel** (would save ~4 s): they share one
+  registry key, one hidden window and one autostart entry. Overlapping them
+  would test the tests. The suite is 6 s; the risk is a flaky gate in the release
+  path, which is the worst place to have one.
+- **Cache the build against the tree fingerprint and the compiler version**
+  (would save 7.9 s): the cache would be correct in the common case, and in the
+  uncommon case it would ship a binary that no build on this machine produced.
+  The release contract is "built from scratch", and 7.9 s is a cheap way to keep
+  it.
+
+The pipeline prints every stage's time and share at the end of a run and in
+`dist/release-X.Y.Z.log`, so the next regression is a number in a log rather than
+an impression.
 
 ## Invariants this design may not break
 
