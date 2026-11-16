@@ -377,7 +377,7 @@ evidence, not opinion.
 ## The release pipeline
 
 `make release` is sixteen stages. It took 135 s; a local rehearsal of it now
-takes 12.6 s. Three things were being paid for without buying anything: the same
+takes 12 s. Three things were being paid for without buying anything: the same
 gates ran twice, the suites slept, and the compiler worked on one file
 at a time.
 
@@ -464,12 +464,12 @@ build that was held back by it.
 | Stage | Time | Why it cannot be cheaper |
 |---|---|---|
 | `build` | 2.6-3.1 s | Four parallel compiles and a 0.12 s link. A link is the floor: one pass over every object, no work to overlap. |
-| `facts` | 4.9-5.7 s | Thirteen processes. The suites themselves are the floor. |
-| `preflight` | 3.0-4.0 s | Three network round trips: `git fetch`, `git ls-remote`, `gh auth status`. |
-| `screenshots` | 1.7-1.9 s | Two app launches and four screen grabs. |
+| `facts` | 4.8-6.5 s | Fourteen processes. The suites themselves are the floor, and they are serial on purpose: they share one registry key and one hidden window. |
+| `preflight` | 1.2 s | Three network round trips - fetch, ls-remote, gh auth - issued at once. Serially they were 3.1 s; nothing else in the stage waits on the network. |
+| `screenshots` | 1.9 s | Two app launches and four screen grabs. |
 | `remote` | 2.2-2.4 s | Six `gh` queries, run at once; serially it was 8.0 s. |
 | `gates` | 0.01 s | A fingerprint comparison, by construction. |
-| **dry run to `notes`** | **12.6 s** | was 135 s, then 18.6 s before the build was split |
+| **dry run to `notes`** | **12.1-12.5 s** | was 135 s, then 18.6 s before the build was split |
 
 A real release adds `commit`, `push`, `ci`, `tag`, `package`, `publish` and
 `verify`. `ci` is the only large one — 35-44 s — and it is a GitHub runner
@@ -478,12 +478,17 @@ something this machine cannot: that the code compiles under the compiler most
 users would use. Nothing local can shorten it, so the pipeline prints it as its
 own stage instead of hiding it inside a total.
 
-Two rejected optimisations, with the number that settles them:
+Three rejected optimisations, with the number that settles them:
 
 - **Run the gates in parallel** (would save ~4 s): they share one
   registry key, one hidden window and one autostart entry. Overlapping them
   would test the tests. The suite is 6 s; the risk is a flaky gate in the release
   path, which is the worst place to have one.
+- **Run the static checks while the suites run** (would save under a second):
+  every suite locates the application by window class, and a concurrent launch
+  of the same binary is the one thing that can make that lookup answer with an
+  instance the suite did not start. Under a second is not worth a race in the
+  release path.
 - **Cache the build against the tree fingerprint and the compiler version**
   (would save 3.1 s): the cache would be correct in the common case, and in the
   uncommon case it would ship a binary that no build on this machine produced.
