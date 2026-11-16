@@ -201,17 +201,20 @@ A bad binary gets a new patch version, with the old release marked as
 superseded rather than deleted — a deleted release teaches nobody what
 happened.
 
-The tag itself is re-pointed in exactly one case: documentation-only commits
-landed after the release and the tagged tree now contradicts the notes. The
-test is that the build inputs are byte-identical between the two commits:
+The tag itself is re-pointed in exactly one case: commits landed after the
+release and the tagged tree now contradicts the notes. The test is not which
+files changed but whether the tree still produces the published binary, byte for
+byte:
 
 ```sh
-git diff --stat vX.Y.Z HEAD -- src tools/*.cpp Makefile build.bat .github
+make -B && sha256sum dist/ExplorerF11.exe
 ```
 
-Empty output means the shipped binary is still exactly what that tree builds, so
-moving the tag changes no artefact, only prose that was wrong. Re-create the tag
-as annotated and force-push it, then state in the tag message why it moved:
+If that digest equals the one in the release notes and `SHA256SUMS.txt`, no
+artefact moved and the commits were prose; the tag can follow them. If it
+differs, they were build changes and this is a new release, not a re-point.
+Re-create the tag as annotated and force-push it, stating in the message why it
+moved:
 
 ```sh
 git tag -f -a vX.Y.Z -m "ExplorerF11 X.Y.Z (re-pointed: documentation-only fix)"

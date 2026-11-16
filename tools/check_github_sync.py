@@ -96,6 +96,16 @@ def local_size_bytes():
     return os.path.getsize(path) if os.path.exists(path) else None
 
 
+def local_sha256():
+    import hashlib
+    for name in (F.ASSET, "ExplorerF11.exe"):
+        path = os.path.join(ROOT, "dist", name)
+        if os.path.exists(path):
+            with open(path, "rb") as fh:
+                return hashlib.sha256(fh.read()).hexdigest()
+    return None
+
+
 print("==== 0. 前置条件 ====")
 code, _, err = gh("auth", "status")
 check("gh 已登录", code == 0, "" if code == 0 else err.splitlines()[:1])
@@ -185,6 +195,12 @@ if downloaded is not None:
         digest, name_in_sums = m.group(1), m.group(2)
         check("校验文件指向 " + F.ASSET, name_in_sums == F.ASSET, name_in_sums)
         check("正文引用的 SHA-256 与校验文件一致", digest in body, digest[:12] + "...")
+        local_digest = local_sha256()
+        if local_digest is None:
+            note("本地无 dist 构建，跳过哈希比对")
+        else:
+            check("本地构建的 SHA-256 = 已发布资产", local_digest == digest,
+                  local_digest[:12] + " vs " + digest[:12])
         if exe_asset:
             check("正文引用的字节数与资产一致",
                   "{:,}".format(exe_asset.get("size", 0)) in body
