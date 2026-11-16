@@ -108,18 +108,21 @@ want = [
     "[ ] 暂停加速",
     "----",
     "[✓] 新建选项卡时重新加速窗口",
-    "[✓] 启动时处理已打开的窗口",
+    "[✓] 启动时加速已打开的窗口",
     None,                            # 开机自启 —— 勾选反映真实自启状态
     "[>] 界面语言",
-    "    [✓] 中文（简体）",
+    "    [✓] 简体中文",
+    "    [ ] 繁體中文",
     "    [ ] English",
+    "    [ ] 日本語",
+    "    [ ] 한국어",
     "----",
-    None,                            # 足迹报告 —— 括号里是项数
+    None,                            # 残留报告 —— 括号里是项数
     "----",
     "[ ] 退出",
 ]
 rest = rows[1:]
-check("行数（含子菜单两行）", len(rest), len(want))
+check("行数（含子菜单五行）", len(rest), len(want))
 for i, w in enumerate(want):
     got = rest[i] if i < len(rest) else "<missing>"
     if w is None:
@@ -133,16 +136,17 @@ for i, w in enumerate(want):
                        got[:4] in ("[ ] ", "[x] ") and got.endswith("对当前窗口立即应用"),
                        got)
         else:
-            check_true("第 %d 行是足迹报告" % (i + 2),
-                       got.startswith("[ ] 足迹报告（") and got.endswith("）…"), got)
+            check_true("第 %d 行是残留报告" % (i + 2),
+                       got.startswith("[ ] 残留报告（") and got.endswith("）…"), got)
     else:
         check("第 %d 行" % (i + 2), got, w)
 
 print("\n==== 3. 结构约束 ====")
 check("顶层分隔线 3 条", sum(1 for r in rest if r.strip() == "----"), 4)
+LANG_ROWS = ("简体中文", "繁體中文", "English", "日本語", "한국어")
 check_true("子菜单行缩进 4 格",
-           all(r.startswith("    ") for r in rest if "中文（简体）" in r or r.strip() == "English"),
-           "")
+           all(r.startswith("    ") for r in rest
+               if any(name in r for name in LANG_ROWS)), "")
 run = val(RUN, "ExplorerF11")
 appr = val(APPROVED, "ExplorerF11")
 blocked = isinstance(appr, bytes) and len(appr) >= 1 and (appr[0] & 1) != 0
@@ -152,33 +156,47 @@ check("勾选项数 = 3 + 自启状态", sum(1 for r in rest if r.strip().starts
       3 + (1 if autostart_on else 0))
 check_true("退出永远在最后一行", rest[-1] == "[ ] 退出", rest[-1])
 check_true("退出上一行是分隔线", len(rest) > 1 and rest[-2] == "----")
-fp_i = next(i for i, r in enumerate(rest) if r.startswith("[ ] 足迹报告（"))
+fp_i = next(i for i, r in enumerate(rest) if r.startswith("[ ] 残留报告（"))
 sep_i = next(i for i, r in enumerate(rest) if i > fp_i and r.strip() == "----")
-check("维护段 = 足迹 + 分隔线",
+check("维护段 = 残留 + 分隔线",
       [r.strip() for r in rest[fp_i + 1:sep_i + 1]], ["----"])
-check("足迹报告之后紧跟退出", rest[sep_i + 1], "[ ] 退出")
+check("残留报告之后紧跟退出", rest[sep_i + 1], "[ ] 退出")
 # One destructive action, one place. It lives inside the report window, where
 # the user can see what is about to be deleted; the menu keeps no second copy.
 check_true("菜单里没有第二个清理入口",
            not any("清除" in r or "Clean" in r or "clean" in r for r in rest), "")
-check_true("只有足迹报告带省略号",
+check_true("只有残留报告带省略号",
            all(r.strip().endswith("…") for r in rest if "…" in r) and
            sum(1 for r in rest if "…" in r) == 1,
            "带 … 的行：%d" % sum(1 for r in rest if "…" in r))
 check_true("没有残留旧文案",
-           not any("注册表足迹" in r or "Run at logon" in r or "新标签页" in r
+           not any("注册表残留" in r or "Run at logon" in r or "新标签页" in r
                    for r in rest))
 
-print("\n==== 4. 英文菜单：同样结构、无中文残留（语言名除外）====")
-code_en, rows_en = menu("en")
-check("英文菜单退出码 = 0", code_en, 0)
-check("英文菜单行数一致", len(rows_en), len(rows))
-flat_en = "\n".join(rows_en)
-check_true("英文菜单里没有中文正文",
-           not any("\u4e00" <= ch <= "\u9fff" for ch in
-                   flat_en.replace("中文（简体）", "")), flat_en.splitlines()[0])
-check_true("英文界面语言项已勾选", "    [✓] English" in rows_en, "")
-check_true("英文足迹报告项", any(r.startswith("[ ] Footprint report (") for r in rows_en))
+print("\n==== 4. 五种语言：同样结构、勾选正确、正文随语言切换 ====")
+for lang, checked, status_marker, report_prefix, exit_row in (
+    ("en", "English", "accelerated", "[ ] Residue report (", "[ ] Exit"),
+    ("zh-Hant", "繁體中文", "個視窗", "[ ] 殘留報告（", "[ ] 結束"),
+    ("ja", "日本語", "ウィンドウを高速化", "[ ] 残留レポート（", "[ ] 終了"),
+    ("ko", "한국어", "가속됨", "[ ] 잔여물 보고서 (", "[ ] 종료"),
+):
+    code_l, rows_l = menu(lang)
+    check("%s 菜单退出码 = 0" % lang, code_l, 0)
+    check("%s 菜单行数一致" % lang, len(rows_l), len(rows))
+    check_true("%s 状态行已本地化" % lang,
+               status_marker in rows_l[0], rows_l[0])
+    checked_langs = [r.strip()[4:] for r in rows_l if r.startswith("    [✓] ")]
+    check("%s 语言单选唯一且正确" % lang, checked_langs, [checked])
+    check_true("%s 残留报告项" % lang,
+               any(r.startswith(report_prefix) for r in rows_l),
+               next((r for r in rows_l if "报告" in r or "報告" in r or "report" in r
+                     or "レポート" in r or "보고서" in r), ""))
+    check("%s 退出项已本地化" % lang, rows_l[-1], exit_row)
+    # 子菜单里的语言名是专名，不翻译；其余正文必须整体换掉。
+    # 分隔线是跨语言共用的结构符号，不参与比对。
+    body = [r for r in rows_l[1:] if not r.startswith("    ") and r != "----"]
+    check_true("%s 正文没有混用中文简体菜单" % lang,
+               not any(r in rows for r in body), str(body))
 
 print("\n==== 5. 暂停/恢复只占一行 ====")
 check("暂停/恢复只占一行", sum(1 for r in rest if "暂停加速" in r or "恢复加速" in r), 1)
@@ -195,6 +213,29 @@ check_true("中文帮助：以窗口为单位，选项卡不单独加速",
            "以窗口为单位" in zh_help and "选项卡不会单独加速" in zh_help)
 check_true("英文帮助：counted in windows, never per tab",
            "counted in windows" in en_help and "never accelerated on its own" in en_help)
+
+print("\n==== 7. 未知选项立刻失败，不静默启动托盘 ====")
+# A typo must never turn into "started a tray instance and did nothing": the
+# exit code is the only signal a script can see. 2 is the conventional usage
+# error, distinct from --status's 0/1 which reports the machine's state.
+def run(args, lang="en"):
+    env = dict(os.environ, EXPLORERF11_LANG=lang)
+    p = subprocess.run([EXE] + args, capture_output=True, text=True,
+                       encoding="utf-8", errors="replace", env=env)
+    return p.returncode, p.stdout
+
+rc, out = run(["--cleen", "--quiet"])
+check("未知选项退出码 = 2", rc, 2)
+check_true("未知选项被原样写出", "--cleen" in out, out.strip().splitlines()[0] if out else "")
+check_true("未知选项提示 --help", "--help" in out)
+rc, out = run(["--lang", "xx", "--quiet"])
+check("无效 --lang 退出码 = 2", rc, 2)
+check_true("无效 --lang 写出整个参数", "--lang xx" in out, out.strip().splitlines()[0] if out else "")
+rc, out = run(["--lang"], "zh")
+check("--lang 缺少取值退出码 = 2", rc, 2)
+check_true("中文界面下用中文报告未知选项", "未知选项：" in out, out.strip().splitlines()[0] if out else "")
+rc, out = run(["--version", "--quiet"])
+check("已知选项仍然退出 0", rc, 0)
 
 print("\n" + ("全部通过" if fails == 0 else "%d 项失败" % fails))
 sys.exit(1 if fails else 0)

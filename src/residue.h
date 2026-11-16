@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 //
-// Footprint accounting.
+// Residue accounting.
 //
 // A tool that runs inside someone's shell has to be able to answer one
 // question honestly: "what did you leave behind?" That means three groups, not
@@ -10,13 +10,13 @@
 //   windows  created by Windows just because the exe ran (Task Manager flag,
 //            tray icon cache, compatibility assistant, MuiCache, UserAssist,
 //            Prefetch) - not authored by us, but still a residue of running us
-//   file     the exe itself: the program, not a trace of it
+//   file     the exe itself: the program, not a residue of itself
 //
 // The report lists every possible location, present or not, with who writes it,
 // where it is, what it currently holds, how many bytes it costs and whether the
 // cleaner will remove it. Nothing is summarised away; nothing is guessed.
-#ifndef EF11_FOOTPRINT_H
-#define EF11_FOOTPRINT_H
+#ifndef EF11_RESIDUE_H
+#define EF11_RESIDUE_H
 
 #include <windows.h>
 #include <string>
@@ -26,7 +26,7 @@ namespace ef11 {
 
 enum class Group { Ours, Windows, File };
 
-struct Footprint {
+struct Residue {
     Group        group     = Group::Ours;
     std::wstring label;                 // 设置键
     std::wstring writer;                // who writes it, and when
@@ -40,7 +40,7 @@ struct Footprint {
 
 // Counts over a collected set. Only residue counts: the program file (it is the
 // program) and in-memory window marks (they vanish with explorer) are excluded.
-struct FootprintTotals {
+struct ResidueTotals {
     int   ours     = 0;   // written by this program
     int   windows  = 0;   // recorded by Windows because the exe ran
     DWORD ourBytes = 0;   // written by this program
@@ -71,13 +71,13 @@ struct CleanReport {
 };
 
 // Everything the tool can find, in report order.
-std::vector<Footprint> CollectFootprints();
+std::vector<Residue> CollectResidues();
 
-FootprintTotals Summarize(const std::vector<Footprint> &items);
+ResidueTotals Summarize(const std::vector<Residue> &items);
 
 // Totals only, for callers that need a number and not the prose (the tray menu
 // shows the count on every open).
-FootprintTotals CurrentTotals();
+ResidueTotals CurrentTotals();
 
 // "3 项" / "3 items". Exposed so the menu label and the report body agree on how
 // a count is spelled, plurals included.
@@ -85,7 +85,7 @@ std::wstring FormatItemCount(int n);
 
 // Human-readable report in the current UI language. places/bytes (optional)
 // receive the same totals as CurrentTotals().
-std::wstring BuildFootprintReport(int *places = nullptr, DWORD *bytes = nullptr);
+std::wstring BuildResidueReport(int *places = nullptr, DWORD *bytes = nullptr);
 
 // Remove everything removable. The exe and the in-memory window marks are
 // deliberately not touched.
@@ -107,9 +107,9 @@ WindowMarks MarkedWindows();
 
 // "已加速 1 个窗口（含 2 个选项卡）" / "1 window accelerated (2 tabs)".
 // The single source of this sentence: the tooltip, the menu header and the
-// footprint report all call it, so the three can never disagree.
+// residue report all call it, so the three can never disagree.
 std::wstring AcceleratedText(const WindowMarks &m);
 
 }  // namespace ef11
 
-#endif  // EF11_FOOTPRINT_H
+#endif  // EF11_RESIDUE_H

@@ -1,0 +1,406 @@
+[
+  {
+    "zh": "没有需要清理的项目。\n\n默认配置不写注册表、不建文件，这次检查也没有找到任何与本程序相关的记录。",
+    "en": "Nothing to remove.\n\nThe default configuration writes no registry value and no file, and this check found no record of the program anywhere."
+  },
+  {
+    "zh": "已清除 ",
+    "en": "Removed "
+  },
+  {
+    "zh": "设置键（HKCU\\Software\\ExplorerF11）",
+    "en": "settings key (HKCU\\Software\\ExplorerF11)"
+  },
+  {
+    "zh": "开机自启项（HKCU\\...\\Run\\ExplorerF11）",
+    "en": "autostart entry (HKCU\\...\\Run\\ExplorerF11)"
+  },
+  {
+    "zh": "日志文件（%TEMP%\\ExplorerF11.log）",
+    "en": "log file (%TEMP%\\ExplorerF11.log)"
+  },
+  {
+    "zh": "启动开关记录（任务管理器）",
+    "en": "startup approval flag (Task Manager)"
+  },
+  {
+    "zh": "托盘图标记录",
+    "en": "tray icon bookkeeping"
+  },
+  {
+    "zh": "兼容性助手记录",
+    "en": "compatibility assistant store"
+  },
+  {
+    "zh": "应用名缓存（MuiCache）",
+    "en": "friendly-name cache (MuiCache)"
+  },
+  {
+    "zh": "启动次数统计（UserAssist）",
+    "en": "launch counter (UserAssist)"
+  },
+  {
+    "zh": "预读取记录（Prefetch）",
+    "en": "Prefetch entry"
+  },
+  {
+    "zh": "\n程序本体未被删除。要卸载，直接删除 ExplorerF11.exe 即可。",
+    "en": "\nThe program itself was not deleted. To uninstall, simply delete ExplorerF11.exe."
+  },
+  {
+    "zh": "将删除本程序留下的全部可清理残留：\n\n  · 设置键 HKCU\\Software\\ExplorerF11\n  · 开机自启项，以及任务管理器为它记的启动开关\n  · 日志文件\n  · Windows 为它记的托盘图标、兼容性、应用名、启动次数与预读取条目\n\n程序本体不会被删除，本程序继续运行；下次启动回到全部默认设置。\n确定继续？",
+    "en": "Every removable residue of this program will be deleted:\n\n  - settings key HKCU\\Software\\ExplorerF11\n  - the autostart entry and the startup flag Task Manager kept for it\n  - the log file\n  - the tray icon, compatibility, friendly-name, launch-count and Prefetch records Windows kept for it\n\nThe exe is not deleted and the tool keeps running; the next start is back to defaults.\nContinue?"
+  },
+  {
+    "zh": "Microsoft YaHei UI",
+    "en": "Segoe UI"
+  },
+  {
+    "zh": "ExplorerF11 · 残留报告",
+    "en": "ExplorerF11 · residue report"
+  },
+  {
+    "zh": "复制全部",
+    "en": "Copy all"
+  },
+  {
+    "zh": "清理残留…",
+    "en": "Clean residues…"
+  },
+  {
+    "zh": "关闭",
+    "en": "Close"
+  },
+  {
+    "zh": "已暂停加速",
+    "en": "paused"
+  },
+  {
+    "zh": "对所有已打开的窗口应用",
+    "en": "Apply to all open windows"
+  },
+  {
+    "zh": "对当前窗口立即应用",
+    "en": "Apply to the active window"
+  },
+  {
+    "zh": "恢复加速",
+    "en": "Resume acceleration"
+  },
+  {
+    "zh": "暂停加速",
+    "en": "Pause acceleration"
+  },
+  {
+    "zh": "新建选项卡时重新加速窗口",
+    "en": "Re-accelerate the window on new tabs"
+  },
+  {
+    "zh": "开机自启",
+    "en": "Start with Windows"
+  },
+  {
+    "zh": "界面语言",
+    "en": "Language"
+  },
+  {
+    "zh": "残留报告（",
+    "en": "Residue report ("
+  },
+  {
+    "zh": "）…",
+    "en": ")…"
+  },
+  {
+    "zh": "残留报告（干净）…",
+    "en": "Residue report (clean)…"
+  },
+  {
+    "zh": "退出",
+    "en": "Exit"
+  },
+  {
+    "zh": "无法向 Shell 注册事件通知，因此本程序收不到窗口事件，也就无法工作。\n\n请注销后重新登录，然后再运行一次。",
+    "en": "Could not register for shell event notifications, so the tool receives no window events and cannot work.\n\nSign out and back in, then run it again."
+  },
+  {
+    "zh": " — 让 Windows 11 资源管理器变快\n\n",
+    "en": " - accelerate Windows 11 File Explorer\n\n"
+  },
+  {
+    "zh": "用法：ExplorerF11.exe [选项]\n\n",
+    "en": "Usage: ExplorerF11.exe [options]\n\n"
+  },
+  {
+    "zh": "选项：\n",
+    "en": "Options:\n"
+  },
+  {
+    "zh": "  （无参数）        在托盘运行，自动加速之后打开的文件夹窗口\n  --install         在托盘运行，并勾选开机自启\n  --uninstall       只删除开机自启项，其他一切不动\n  --status          打印完整残留报告；退出码 0 = 干净，1 = 有可清理项\n  --clean, --purge  删除全部可清理残留后退出（会先关闭正在运行的实例）\n  --menu            把托盘菜单按文本打印出来（供测试与排查）\n  --lang <tag>      本次运行的界面语言（zh/zh-Hant/en/ja/ko）\n  --log             把运行日志写到 %TEMP%\\ExplorerF11.log\n  --no-initial      不处理本次启动前已经打开的窗口\n  --quiet           不弹任何对话框（脚本用）\n  --version, -v     打印版本号\n  --help, -h        打印这段说明\n\n",
+    "en": "  (none)            run in the tray, accelerate folder windows opened later\n  --install         run in the tray and tick \"Start with Windows\"\n  --uninstall       remove the autostart entry only, nothing else\n  --status          print the full residue report; exit 0 = clean, 1 = residues\n  --clean, --purge  remove every removable residue, then exit (closes a running copy)\n  --menu            print the tray menu as text (tests and troubleshooting)\n  --lang <tag>      UI language for this run (zh/zh-Hant/en/ja/ko)\n  --log             write %TEMP%\\ExplorerF11.log\n  --no-initial      leave windows that were already open alone\n  --quiet           never show a message box (for scripts)\n  --version, -v     print the version\n  --help, -h        print this help\n\n"
+  },
+  {
+    "zh": "语言：--lang 优先，其次环境变量 EXPLORERF11_LANG，再次托盘菜单里的选择，\n      最后跟随系统语言。托盘里的选择会被保存；选回系统语言即删除保存值。\n\n残留：默认配置不写注册表、不建文件。只有把某个开关改成非默认值、勾选\n      开机自启或切换界面语言时才会写入，改回默认即删除。--status 列出\n      全部可能位置（含 Windows 自动记录的那些），--clean 清零。\n      界面里的清理入口只有一处：残留报告窗口底部的「清理残留…」，执行前会再确认。\n      程序本体不算残留；要卸载，直接删除 ExplorerF11.exe 即可。\n\n单位：加速以窗口为单位，不以选项卡为单位 —— F11 由窗口框架处理，一次往返对\n      该窗口内的全部选项卡同时生效，选项卡不会单独加速。状态行括号里是这些\n      窗口当前包含的选项卡数。\n\n示例：\n  ExplorerF11.exe --install              安装，并在登录时启动\n  ExplorerF11.exe --status --lang en     用英文核对残留\n  ExplorerF11.exe --clean --quiet        在脚本里静默清空全部残留\n",
+    "en": "Language: --lang first, then EXPLORERF11_LANG, then the choice made in the tray\n      menu, then the system language. The tray choice is stored; picking the\n      system language again deletes the stored value.\n\nResidue: the default configuration writes no registry value and no file. A\n      value appears only when a setting leaves its default, when autostart is\n      ticked, or when the UI language is switched; returning to the default\n      deletes it. --status lists every possible location (including the ones\n      Windows records on its own), --clean zeroes them. The only clean entry in\n      the UI is the \"Clean residues…\" button in the residue report; it asks first.\n      The exe is not a residue: delete ExplorerF11.exe yourself for a full uninstall.\n\nUnit: acceleration is counted in windows, not in tabs - F11 is handled by the\n      window frame, so one round trip covers every tab in that window at once,\n      and a tab is never accelerated on its own. The bracketed figure is how many\n      tabs those windows currently hold.\n\nExamples:\n  ExplorerF11.exe --install              install, and start at logon\n  ExplorerF11.exe --status --lang en     check the residue in English\n  ExplorerF11.exe --clean --quiet        clear everything silently from a script\n"
+  },
+  {
+    "zh": "已删除开机自启项。\n\n程序本体与其他残留都还在。要全部清除，运行：\n    ExplorerF11.exe --clean",
+    "en": "Autostart entry removed.\n\nThe exe and the remaining residues are still there. To clear everything, run:\n    ExplorerF11.exe --clean"
+  },
+  {
+    "zh": "已禁用（曾由任务管理器关闭）",
+    "en": "disabled (switched off in Task Manager)"
+  },
+  {
+    "zh": "已启用",
+    "en": "enabled"
+  },
+  {
+    "zh": "存在",
+    "en": "present"
+  },
+  {
+    "zh": " 项",
+    "en": " item"
+  },
+  {
+    "zh": "（",
+    "en": " ("
+  },
+  {
+    "zh": "）",
+    "en": ")"
+  },
+  {
+    "zh": "运行中，等待文件夹窗口",
+    "en": "running, waiting for a folder window"
+  },
+  {
+    "zh": "已加速 1 个窗口",
+    "en": "1 window accelerated"
+  },
+  {
+    "zh": "已加速 %d 个窗口",
+    "en": "%d windows accelerated"
+  },
+  {
+    "zh": "（含 %d 个选项卡）",
+    "en": " (%d tab)"
+  },
+  {
+    "zh": "Windows 自动记录",
+    "en": "recorded by Windows"
+  },
+  {
+    "zh": "设置键",
+    "en": "Settings key"
+  },
+  {
+    "zh": "本程序；仅当某个开关被改成非默认值时才写入",
+    "en": "this program, and only while a setting differs from its default"
+  },
+  {
+    "zh": "开机自启项",
+    "en": "Autostart entry"
+  },
+  {
+    "zh": "本程序；你在托盘菜单里勾选「开机自启」时",
+    "en": "this program, when \"Start with Windows\" is ticked in the tray menu"
+  },
+  {
+    "zh": "一个 REG_SZ 值：带引号的 exe 完整路径，不带任何参数。取消勾选即删除",
+    "en": "one REG_SZ value: the quoted full path to the exe, with no arguments. Unticking deletes it"
+  },
+  {
+    "zh": "日志文件",
+    "en": "Log file"
+  },
+  {
+    "zh": "本程序；只有带 --log 参数或排查问题时",
+    "en": "this program, only with --log"
+  },
+  {
+    "zh": "默认不存在。超过 1 MB 从头重写，不会无限增长。清理时删除",
+    "en": "not created by default; rewritten past 1 MB, so it cannot grow without bound"
+  },
+  {
+    "zh": "程序本体",
+    "en": "Program file"
+  },
+  {
+    "zh": "你；这个文件是你放到这里的",
+    "en": "you; the file is where you put it"
+  },
+  {
+    "zh": "这是程序本身，不是残留；清理不会删除它。要卸载，直接删除此文件。",
+    "en": "this is the program itself, not a residue; cleanup never deletes it. To uninstall, delete this file."
+  },
+  {
+    "zh": "启动开关（任务管理器）",
+    "en": "Startup approval flag (Task Manager)"
+  },
+  {
+    "zh": "12 字节 REG_BINARY。首字节为奇数 = 在任务管理器里关过；清理时删除",
+    "en": "12-byte REG_BINARY; an odd first byte = disabled in Task Manager. Deleted with the residues"
+  },
+  {
+    "zh": "每个托盘图标一条记录（含 1–3 KB 图标快照）；只统计指向本程序的那些",
+    "en": "one record per tray icon (a 1-3 KB icon snapshot); only entries pointing at this exe count"
+  },
+  {
+    "zh": " 条",
+    "en": " entries"
+  },
+  {
+    "zh": "Windows 在程序运行后留下的一条「它运行过」的记录，供兼容性判断使用",
+    "en": "one \"this program ran\" record Windows keeps for compatibility decisions"
+  },
+  {
+    "zh": "任务管理器、防火墙等界面里显示的程序名就缓存在这里",
+    "en": "where Task Manager and the firewall get the name they display"
+  },
+  {
+    "zh": "值名是 ROT13 编码的 exe 路径，记录启动次数与最后使用时间",
+    "en": "value names are ROT13-encoded exe paths; stores launch count and last-used time"
+  },
+  {
+    "zh": "只有管理员可读。存在即说明系统预读过它；清理需要管理员权限",
+    "en": "administrators only; its presence means the system prefetched it. Cleanup needs elevation"
+  },
+  {
+    "zh": "窗口标记（只在内存中）",
+    "en": "Window marks (memory only)"
+  },
+  {
+    "zh": "本程序；写在资源管理器窗口的属性里",
+    "en": "this program, as a property on explorer windows"
+  },
+  {
+    "zh": "窗口属性 ExplorerF11.Marked",
+    "en": "window property ExplorerF11.Marked"
+  },
+  {
+    "zh": "不落盘：explorer 重启或注销后自动消失，无需清理",
+    "en": "never touches disk: gone when explorer restarts or you sign out"
+  },
+  {
+    "zh": " · 残留报告\n",
+    "en": " - residue report\n"
+  },
+  {
+    "zh": "程序：",
+    "en": "program: "
+  },
+  {
+    "zh": "时间：",
+    "en": "time:    "
+  },
+  {
+    "zh": "范围：",
+    "en": "scope:   "
+  },
+  {
+    "zh": " 个可能位置，分 3 组；逐项列出检查结果，不存在的位置同样列示。\n",
+    "en": " possible locations in 3 groups; every one is listed below with its result, present or absent.\n"
+  },
+  {
+    "zh": "结论：干净 —— 系统里找不到任何与它相关的记录（0 项需要清理）。\n",
+    "en": "Verdict: clean - no residue of it anywhere (0 items to remove).\n"
+  },
+  {
+    "zh": "结论：共 ",
+    "en": "Verdict: "
+  },
+  {
+    "zh": "需要清理，合计 ",
+    "en": " to remove, "
+  },
+  {
+    "zh": "。\n      ",
+    "en": " in total.\n      "
+  },
+  {
+    "zh": "本程序 ",
+    "en": "this program: "
+  },
+  {
+    "zh": "；Windows 自动记录 ",
+    "en": "; recorded by Windows: "
+  },
+  {
+    "zh": "。\n",
+    "en": ".\n"
+  },
+  {
+    "zh": "      标注「可清理」的项目会被窗口里的「清理残留…」删除；程序本体不删除。\n\n",
+    "en": "      Items marked \"removable\" are deleted by \"Clean residues…\" in this window; the exe is not.\n\n"
+  },
+  {
+    "zh": "── 一、本程序写入",
+    "en": "-- 1. written by this program"
+  },
+  {
+    "zh": "── 二、Windows 自动记录",
+    "en": "-- 2. recorded by Windows"
+  },
+  {
+    "zh": "── 三、程序文件",
+    "en": "-- 3. program file"
+  },
+  {
+    "zh": " · 存在",
+    "en": " - present"
+  },
+  {
+    "zh": " · 不存在",
+    "en": " - absent"
+  },
+  {
+    "zh": " · 可清理",
+    "en": " - removable"
+  },
+  {
+    "zh": " · 不清理",
+    "en": " - kept"
+  },
+  {
+    "zh": "      谁写：",
+    "en": "      who:    "
+  },
+  {
+    "zh": "      位置：",
+    "en": "      where:  "
+  },
+  {
+    "zh": "      内容：",
+    "en": "      what:   "
+  },
+  {
+    "zh": "      说明：",
+    "en": "      note:   "
+  },
+  {
+    "zh": "注 1：注册表本身还有固定开销（每个键约 1 KB，每个值还有名称与头部开销），这里只统计值数据与名称的字节数。\n注 2：Windows 自动记录的那几项删掉之后，下次运行还会重新生成 —— 这是系统行为，不属于本程序留下的残留。\n注 3：本报告只读：生成报告不会修改任何一项；「清理残留…」按钮是唯一的删除入口，执行前会再确认一次。\n",
+    "en": "Note 1: the registry adds fixed overhead (about 1 KB per key, plus per-value headers); only value data and names are counted here.\nNote 2: items recorded by Windows come back on the next run - that is OS behaviour, not a residue left by this program.\nNote 3: this report is read-only: generating it changes nothing. The \"Clean residues…\" button is the only place that deletes, and it asks first.\n"
+  },
+  {
+    "zh": "（本机时间） · 界面语言：",
+    "en": " (local) - UI language: "
+  },
+  {
+    "zh": "可能的值是 Tabs、InitialSweep、Language。改回默认即删该值，键空则删键",
+    "en": "possible values: Tabs, InitialSweep, Language; a value is deleted when it returns to its default"
+  },
+  {
+    "zh": "启动时加速已打开的窗口",
+    "en": "Accelerate windows open at start-up"
+  },
+  {
+    "zh": "未知选项：",
+    "en": "Unknown option: "
+  },
+  {
+    "zh": "用 --help 查看全部选项。\n",
+    "en": "Run --help for the full list.\n"
+  }
+]

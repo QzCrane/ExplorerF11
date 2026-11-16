@@ -1,17 +1,17 @@
 """
-Tests for the footprint report: --status, the report window, and both languages.
+Tests for the residue report: --status, the report window, and all five languages.
 
 What is proven here:
   1. the report tells the truth (verdict, exit code, item count, groups),
   2. merely LOOKING at it writes nothing (state before == state after),
-  3. both languages render the same structure, and English carries no Chinese,
+  3. all five languages render the same structure, and English carries no Chinese,
   4. the window shows the same report as --status, and it follows a language
      switch while open.
 
 The clean button is only exercised in the already-clean case: a test must not
 delete a real installation's settings as a side effect.
 
-Run:  python tests/test_footprint_report.py
+Run:  python tests/test_residue_report.py
 """
 
 import ctypes
@@ -234,6 +234,11 @@ def items(text):
 
 print("\n==== 1. 报告与真实状态一致 ====")
 kill()
+# Windows writes MuiCache and the compatibility store the first time any exe
+# runs, so a baseline taken before the very first launch would differ from
+# every later one and the read-only assertions below would fail on a clean
+# machine. One throwaway run makes the baseline describe the steady state.
+run_status()
 before = state()
 print("      state:", before)
 code, out = run_status()
@@ -258,7 +263,7 @@ check_true("报告说明检查范围",
 check("谁写：行数 = 条目数", out.count("谁写："), 11)
 check("位置：行数 = 条目数", out.count("位置："), 11)
 check("说明：行数 = 条目数", out.count("说明："), 11)
-check_true("程序本体注明不是痕迹", "不是痕迹" in out or "干净" in out)
+check_true("程序本体注明不是残留", "不是残留" in out or "干净" in out)
 check_true("Windows 记录单独成段并解释来源",
            "── 二、Windows 自动记录" in out and "这是系统行为" in out, "")
 check_true("可清理标记存在", "· 可清理" in out or clean)
@@ -305,9 +310,30 @@ if en_mark is not None and "present" in en_lines[en_mark]:
                what)
 else:
     print("SKIP  window marks (no accelerated window right now)")
-check_true("英文版单复数正确",
-           "(1 item)" in en or "(0 items)" in en or "1 item to remove" in en
-           or "0 items to remove" in en, "")
+# Plural agreement, checked where it can actually break: a plural noun after a
+# literal 1, or a singular noun after anything else. "1 items" and "2 item" are
+# the two shapes the formatter used to be able to produce.
+bad_plural = (re.findall(r"\b1 (items|tabs|entries|windows)\b", en) +
+              re.findall(r"\b(?:0|[2-9]|\d\d+) (item|tab|entry|window)\b", en))
+check_true("英文版单复数正确", not bad_plural, bad_plural)
+
+print("\n==== 3b. 五种语言：结构一致，结论不重复量词 ====")
+TITLE_TOKENS = {
+    "zh": "残留报告", "zh-Hant": "殘留報告", "en": "residue report",
+    "ja": "残留レポート", "ko": "잔여물 보고서",
+}
+for tag, token in TITLE_TOKENS.items():
+    p_l = subprocess.run([EXE, "--status", "--lang", tag], capture_output=True,
+                         timeout=25)
+    text_l = p_l.stdout.decode("utf-8", "replace")
+    check("%s 报告退出码一致" % tag, p_l.returncode, code)
+    check_true("%s 报告标题已本地化" % tag, token in text_l.splitlines()[0],
+               text_l.splitlines()[0])
+    check("%s 条目数一致" % tag, len(items(text_l)), 11)
+    check_true("%s 结论没有重复量词" % tag,
+               not any(x in text_l for x in ("件 件", "개개", "项 项", "item item")),
+               next((l for l in text_l.splitlines() if "结论" in l or "結論" in l
+                     or "Verdict" in l), ""))
 
 print("\n==== 4. 只看不写 ====")
 kill()
@@ -318,7 +344,7 @@ start("--lang", "zh")
 check("隐藏窗口存在", bool(hwnd("ExplorerF11Window")), True)
 post_cmd(IDM_STATUS)
 win = hwnd("ExplorerF11StatusWindow")
-check("足迹窗口已打开", bool(win), True)
+check("残留窗口已打开", bool(win), True)
 if win:
     check("窗口可见", bool(u.IsWindowVisible(win)), True)
     text = read_edit(win).replace("\r\n", "\n")
@@ -326,7 +352,7 @@ if win:
     check_true("窗口内容与 --status 同结构",
                text.splitlines()[0] == out.splitlines()[0] and
                text.count("谁写：") == out.count("谁写："))
-    check_true("标题正确", "足迹报告" in window_text(win), window_text(win))
+    check_true("标题正确", "残留报告" in window_text(win), window_text(win))
 
     u.PostMessageW(win, 0x0111, 2002, 0)   # IDC_STATUS_COPY
     time.sleep(0.5)
@@ -338,14 +364,14 @@ if win:
     time.sleep(0.9)
     text_en = read_edit(win).replace("\r\n", "\n")
     check_true("窗口正文已变成英文",
-               text_en.startswith("ExplorerF11 ") and "footprint report" in text_en)
+               text_en.startswith("ExplorerF11 ") and "residue report" in text_en)
     check_true("窗口里有英文字段", "who:    " in text_en)
-    check_true("标题已变成英文", "footprint report" in window_text(win), window_text(win))
+    check_true("标题已变成英文", "residue report" in window_text(win), window_text(win))
     check_true("按钮已本地化（Copy all）", dlg_text(win, 2002) == "Copy all",
                dlg_text(win, 2002))
     u.PostMessageW(hwnd("ExplorerF11Window"), 0x0111, 1011, 0)   # IDM_LANG_ZH
     time.sleep(0.9)
-    check_true("窗口正文已回到中文", "足迹报告" in read_edit(win))
+    check_true("窗口正文已回到中文", "残留报告" in read_edit(win))
     check_true("按钮已回到中文（复制全部）", dlg_text(win, 2002) == "复制全部",
                dlg_text(win, 2002))
 

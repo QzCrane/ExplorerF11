@@ -5,7 +5,7 @@
 Proven here:
   1. --lang and EXPLORERF11_LANG change the UI for that run and write nothing,
   2. the tray menu switches language live and the choice survives a restart,
-  3. a switch reaches an already open footprint window (title, body, buttons),
+  3. a switch reaches an already open residue report window (title, body, buttons),
   4. the choice is stored only while it differs from the system language -
      picking the system language again deletes the value, so a user who never
      touches the menu leaves nothing behind,
@@ -32,8 +32,52 @@ CFG = r"Software\ExplorerF11"
 LANG_VALUE = "Language"
 
 IDM_STATUS = 1010
-IDM_LANG_ZH = 1011
-IDM_LANG_EN = 1012
+
+# Keep these in lockstep with the command IDs in src/main.cpp.
+TAGS = ("zh", "zh-Hant", "en", "ja", "ko")
+IDM_LANG = {
+    "zh": 1011,
+    "en": 1012,
+    "zh-Hant": 1013,
+    "ja": 1014,
+    "ko": 1015,
+}
+CHECKED_ROW = {
+    "zh": "简体中文",
+    "zh-Hant": "繁體中文",
+    "en": "English",
+    "ja": "日本語",
+    "ko": "한국어",
+}
+# The report states which language it is written in, and it must name the
+# language that is actually active - not a value baked into the translated
+# fragment. Each of these is the endonym from i18n.h: LangName().
+HEADER_TOKEN = {
+    "zh": "界面语言：简体中文",
+    "zh-Hant": "介面語言：繁體中文",
+    "en": "UI language: English",
+    "ja": "表示言語：日本語",
+    "ko": "표시 언어: 한국어",
+}
+TITLE_TOKEN = {
+    "zh": "残留报告",
+    "zh-Hant": "殘留報告",
+    "en": "residue report",
+    "ja": "残留レポート",
+    "ko": "잔여물 보고서",
+}
+COPY_TOKEN = {
+    "zh": "复制全部", "zh-Hant": "複製全部", "en": "Copy all",
+    "ja": "すべてコピー", "ko": "모두 복사",
+}
+CLEAN_TOKEN = {
+    "zh": "清理残留…", "zh-Hant": "清除殘留…", "en": "Clean residues…",
+    "ja": "残留を削除…", "ko": "잔여물 정리…",
+}
+CLOSE_TOKEN = {
+    "zh": "关闭", "zh-Hant": "關閉", "en": "Close",
+    "ja": "閉じる", "ko": "닫기",
+}
 
 # No EXPLORERF11_LANG: this suite is about what the tool does on its own.
 CLEAN_ENV = {k: v for k, v in os.environ.items() if k != "EXPLORERF11_LANG"}
@@ -137,11 +181,10 @@ def menu(lang=None):
 
 
 def checked_language(rows):
-    for r in rows:
-        if r.strip() == "[✓] 中文（简体）":
-            return "zh"
-        if r.strip() == "[✓] English":
-            return "en"
+    stripped = [r.strip() for r in rows]
+    for tag in TAGS:
+        if "[✓] " + CHECKED_ROW[tag] in stripped:
+            return tag
     return None
 
 
@@ -152,18 +195,17 @@ def status(*args, env=None):
 
 
 def report_language(out):
-    """The report states its own UI language in the header: return zh / en."""
-    for line in out.splitlines()[:6]:
-        if "UI language: English" in line:
-            return "en"
-        if "界面语言：中文" in line:
-            return "zh"
+    """The report states its own UI language in the header: return a tag."""
+    head = "\n".join(out.splitlines()[:6])
+    for tag in TAGS:
+        if HEADER_TOKEN[tag] in head:
+            return tag
     return None
 
 
 sys_zh = system_is_zh()
 print("==== 0. 环境 ====")
-print("      区域格式语言（仅供参考） =", "zh" if sys_zh else "en")
+print("      区域格式语言（仅供参考） =", "zh" if sys_zh else "非 zh")
 ORIG_LANG = read_lang()
 print("      测试前 Language =", ORIG_LANG)
 kill()
@@ -174,19 +216,17 @@ check("起始状态无 Language 值", read_lang(), None)
 # UI with an English region is a normal combination, and the tool answers to the
 # UI language. With no stored value and no override, the menu shows that default.
 sys_tag = checked_language(menu())
-check_true("能确定默认语言", sys_tag in ("zh", "en"), sys_tag)
-other_tag = "en" if sys_tag == "zh" else "zh"
-other_id = IDM_LANG_EN if sys_tag == "zh" else IDM_LANG_ZH
-sys_id = IDM_LANG_ZH if sys_tag == "zh" else IDM_LANG_EN
+check_true("能确定默认语言", sys_tag in TAGS, sys_tag)
+other_tag = "en" if sys_tag != "en" else "zh-Hant"
+other_id = IDM_LANG[other_tag]
+sys_id = IDM_LANG[sys_tag]
 print("      默认语言 =", sys_tag, "（另一语言 =", other_tag, "）")
 
 print("\n==== 1. --lang / EXPLORERF11_LANG 只影响本次运行，不落盘 ====")
-check("环境变量 zh 生效", checked_language(menu("zh")), "zh")
-check("环境变量 en 生效", checked_language(menu("en")), "en")
-code, out = status("--lang", "en")
-check("--lang en 的报告是英文", report_language(out), "en")
-code_zh, out_zh = status("--lang", "zh")
-check("--lang zh 的报告是中文", report_language(out_zh), "zh")
+for tag in TAGS:
+    check("环境变量 %s 生效" % tag, checked_language(menu(tag)), tag)
+    code_l, out_l = status("--lang", tag)
+    check("--lang %s 的报告语言正确" % tag, report_language(out_l), tag)
 check("命令行切语言不写注册表", read_lang(), None)
 code, out = status()          # 无任何覆盖：应回到系统语言
 check("默认报告 = 系统语言", report_language(out), sys_tag)
@@ -212,18 +252,18 @@ out_env = subprocess.run([EXE, "--status"], capture_output=True, timeout=25,
                          env=dict(CLEAN_ENV, EXPLORERF11_LANG=sys_tag)).stdout
 check("环境变量也覆盖存储值", report_language(out_env.decode("utf-8", "replace")), sys_tag)
 
-print("\n==== 4. 切回系统语言 -> 删除存储值（零足迹）====")
+print("\n==== 4. 切回系统语言 -> 删除存储值（不留配置）====")
 check("仍在上一步的实例里切换", post(sys_id), True)
 check("选回系统语言后值被删除", read_lang(), None)
 check("配置键随之消失", cfg_exists(), False)
 check("菜单显示系统语言", checked_language(menu()), sys_tag)
 kill()
 
-print("\n==== 5. 已打开的足迹窗口跟随切换 ====")
+print("\n==== 5. 已打开的残留窗口跟随切换 ====")
 start()
 post(IDM_STATUS)
 win = u.FindWindowW("ExplorerF11StatusWindow", None)
-check("足迹窗口已打开", bool(win), True)
+check("残留窗口已打开", bool(win), True)
 if win:
     def win_text():
         buf = ctypes.create_unicode_buffer(512)
@@ -236,13 +276,30 @@ if win:
         u.SendMessageW(edit, 0x000D, 65536, ctypes.cast(b, ctypes.c_void_p).value)
         return b.value
 
+    def ctrl_text(cid):
+        b = ctypes.create_unicode_buffer(256)
+        u.GetWindowTextW(u.GetDlgItem(win, cid), b, 256)
+        return b.value
+
     before_lang = report_language(body().replace("\r\n", "\n"))
     check("窗口正文当前语言 = 系统语言", before_lang, sys_tag)
-    post(other_id)
-    after_lang = report_language(body().replace("\r\n", "\n"))
-    check("窗口正文已跟随切换", after_lang, other_tag)
-    want_title = "footprint report" if other_tag == "en" else "足迹报告"
-    check_true("窗口标题已跟随切换", want_title in win_text(), win_text())
+
+    # Every language must repaint an already-open window: header, title and all
+    # three buttons. This is the regression guard for the half-translated panel.
+    for tag in TAGS:
+        check("发出切换到 %s 的指令" % tag, post(IDM_LANG[tag]), True)
+        check("%s 窗口正文已跟随切换" % tag,
+              report_language(body().replace("\r\n", "\n")), tag)
+        check_true("%s 窗口标题已跟随切换" % tag,
+                   TITLE_TOKEN[tag] in win_text(), win_text())
+        check("%s 复制按钮已跟随切换" % tag, ctrl_text(2002), COPY_TOKEN[tag])
+        check("%s 清理按钮已跟随切换" % tag, ctrl_text(2003), CLEAN_TOKEN[tag])
+        check("%s 关闭按钮已跟随切换" % tag, ctrl_text(2004), CLOSE_TOKEN[tag])
+
+    # Return to the system language so the stored value is removed again.
+    post(sys_id)
+    check("窗口正文已回到系统语言",
+          report_language(body().replace("\r\n", "\n")), sys_tag)
     u.PostMessageW(win, 0x0010, 0, 0)
     time.sleep(0.4)
 kill()

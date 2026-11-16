@@ -126,7 +126,7 @@ def main():
         raise SystemExit("report window did not open")
     time.sleep(0.7)                      # let the edit control paint the body
     raise_window(report)
-    grab(report, os.path.join(OUT, "footprint-report" + SUFFIX + ".png"))
+    grab(report, os.path.join(OUT, "residue-report" + SUFFIX + ".png"))
     u.SetWindowPos(report, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE)
     u.PostMessageW(report, WM_CLOSE, 0, 0)
     time.sleep(0.4)

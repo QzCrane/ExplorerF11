@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-#include "footprint.h"
+#include "residue.h"
 
 #include <cstdio>
 
@@ -135,7 +135,7 @@ int ValuesMatching(HKEY root, const wchar_t *path, const wchar_t *needle,
 }
 
 // Windows' tray-icon bookkeeping: only entries whose ExecutablePath is our exe.
-int TrayFootprint(std::wstring *detail, DWORD *bytes) {
+int TrayResidue(std::wstring *detail, DWORD *bytes) {
     *bytes = 0;
     detail->clear();
     HKEY root;
@@ -174,7 +174,7 @@ int TrayFootprint(std::wstring *detail, DWORD *bytes) {
 }
 
 // UserAssist keeps one Count key per GUID with ROT13-encoded value names.
-int UserAssistFootprint(std::wstring *detail, DWORD *bytes) {
+int UserAssistResidue(std::wstring *detail, DWORD *bytes) {
     *bytes = 0;
     detail->clear();
     HKEY root;
@@ -209,7 +209,7 @@ int UserAssistFootprint(std::wstring *detail, DWORD *bytes) {
 
 // Prefetch is readable by administrators only; a plain user simply sees no
 // entry, which is why the note says so instead of pretending it is absent.
-int PrefetchFootprint(std::wstring *detail, DWORD *bytes) {
+int PrefetchResidue(std::wstring *detail, DWORD *bytes) {
     *bytes = 0;
     detail->clear();
     wchar_t win[MAX_PATH] = {0};
@@ -335,7 +335,9 @@ std::wstring Pad2(int n) {
 // Count + optional size, with the plural English needs and Chinese does not.
 std::wstring ItemsBytes(int n, DWORD bytes) {
     std::wstring s = Pad2(n);
-    s += T(L" 项", n == 1 ? L" item" : L" items");
+    // Chinese has no plural; the two English forms are separate T() calls so
+    // the extractor sees both literals and the table can translate the key once.
+    s += (n == 1) ? T(L" 项", L" item") : T(L" 项", L" items");
     if (n) {
         s += T(L"（", L" (");
         s += FmtBytes(bytes);
@@ -381,27 +383,31 @@ std::wstring AcceleratedText(const WindowMarks &m) {
     // acceleration: these are the tabs the accelerated windows hold right now.
     if (m.tabs > 0) {
         wchar_t b[48];
-        swprintf_s(b, T(L"（含 %d 个选项卡）", m.tabs == 1 ? L" (%d tab)" : L" (%d tabs)"),
-                   m.tabs);
+        // Separate T() calls (not a ternary as T's second argument) so the
+        // extractor records the zh key and the table can translate it.
+        const wchar_t *fmt = (m.tabs == 1)
+            ? T(L"（含 %d 个选项卡）", L" (%d tab)")
+            : T(L"（含 %d 个选项卡）", L" (%d tabs)");
+        swprintf_s(b, fmt, m.tabs);
         s += b;
     }
     return s;
 }
 
-std::vector<Footprint> CollectFootprints() {
-    std::vector<Footprint> f;
+std::vector<Residue> CollectResidues() {
+    std::vector<Residue> f;
     std::wstring d;
     const wchar_t *W_WIN = T(L"Windows 自动记录", L"recorded by Windows");
 
     // ---- 1. our settings key -------------------------------------------
     {
-        Footprint x;
+        Residue x;
         x.group   = Group::Ours;
         x.label   = T(L"设置键", L"Settings key");
         x.writer  = T(L"本程序；仅当某个开关被改成非默认值时才写入",
                       L"this program, and only while a setting differs from its default");
         x.where   = std::wstring(L"HKCU\\") + CFG_KEY;
-        x.note    = T(L"可能的值：Tabs、InitialSweep、Language。改回默认即删该值，键空则删键",
+        x.note    = T(L"可能的值是 Tabs、InitialSweep、Language。改回默认即删该值，键空则删键",
                       L"possible values: Tabs, InitialSweep, Language; a value is deleted when "
                       L"it returns to its default");
         x.present = KeyContents(HKEY_CURRENT_USER, CFG_KEY, &d, &x.bytes);
@@ -410,7 +416,7 @@ std::vector<Footprint> CollectFootprints() {
     }
     // ---- 2. autostart value --------------------------------------------
     {
-        Footprint x;
+        Residue x;
         x.group   = Group::Ours;
         x.label   = T(L"开机自启项", L"Autostart entry");
         x.writer  = T(L"本程序；你在托盘菜单里勾选「开机自启」时",
@@ -425,7 +431,7 @@ std::vector<Footprint> CollectFootprints() {
     }
     // ---- 3. log file ----------------------------------------------------
     {
-        Footprint x;
+        Residue x;
         x.group   = Group::Ours;
         x.label   = T(L"日志文件", L"Log file");
         x.writer  = T(L"本程序；只有带 --log 参数或排查问题时",
@@ -439,14 +445,14 @@ std::vector<Footprint> CollectFootprints() {
     }
     // ---- 4. the executable itself --------------------------------------
     {
-        Footprint x;
+        Residue x;
         x.group     = Group::File;
         x.label     = T(L"程序本体", L"Program file");
         x.writer    = T(L"你；这个文件是你放到这里的", L"you; the file is where you put it");
         x.where     = ExePath();
-        x.note      = T(L"不是痕迹，是程序本身，清理不会删除它。彻底卸载：清完痕迹再删此文件",
-                        L"not residue but the program; cleanup never deletes it. Uninstall: clear "
-                        L"traces, then delete this file");
+        x.note      = T(L"这是程序本身，不是残留；清理不会删除它。要卸载，直接删除此文件。",
+                        L"this is the program itself, not a residue; cleanup never deletes it. "
+                        L"To uninstall, delete this file.");
         x.deletable = false;
         x.present   = FileInfo(x.where, &x.bytes);
         if (x.present) x.content = FmtBytes(x.bytes);
@@ -454,21 +460,21 @@ std::vector<Footprint> CollectFootprints() {
     }
     // ---- 5. Task Manager on/off flag -----------------------------------
     {
-        Footprint x;
+        Residue x;
         x.group   = Group::Windows;
         x.label   = T(L"启动开关（任务管理器）", L"Startup approval flag (Task Manager)");
         x.writer  = W_WIN;
         x.where   = std::wstring(L"HKCU\\") + APPROVED_KEY + L"\\" + RUN_VALUE;
         x.note    = T(L"12 字节 REG_BINARY。首字节为奇数 = 在任务管理器里关过；清理时删除",
                       L"12-byte REG_BINARY; an odd first byte = disabled in Task Manager. Deleted "
-                      L"with the traces");
+                      L"with the residues");
         x.present = OneValue(HKEY_CURRENT_USER, APPROVED_KEY, RUN_VALUE, &d, &x.bytes);
         if (x.present) x.content = d + L" (" + FmtBytes(x.bytes) + L")";
         f.push_back(x);
     }
     // ---- 6. tray icon bookkeeping --------------------------------------
     {
-        Footprint x;
+        Residue x;
         x.group   = Group::Windows;
         x.label   = T(L"托盘图标记录", L"Tray icon bookkeeping");
         x.writer  = W_WIN;
@@ -476,13 +482,13 @@ std::vector<Footprint> CollectFootprints() {
         x.note    = T(L"每个托盘图标一条记录（含 1–3 KB 图标快照）；只统计指向本程序的那些",
                       L"one record per tray icon (a 1-3 KB icon snapshot); only entries pointing "
                       L"at this exe count");
-        x.present = TrayFootprint(&d, &x.bytes) > 0;
+        x.present = TrayResidue(&d, &x.bytes) > 0;
         if (x.present) x.content = d + T(L" 条", L" entries") + L" (" + FmtBytes(x.bytes) + L")";
         f.push_back(x);
     }
     // ---- 7. Compatibility Assistant store ------------------------------
     {
-        Footprint x;
+        Residue x;
         x.group   = Group::Windows;
         x.label   = T(L"兼容性助手记录", L"Compatibility Assistant store");
         x.writer  = W_WIN;
@@ -495,7 +501,7 @@ std::vector<Footprint> CollectFootprints() {
     }
     // ---- 8. MuiCache friendly name -------------------------------------
     {
-        Footprint x;
+        Residue x;
         x.group   = Group::Windows;
         x.label   = T(L"应用名缓存（MuiCache）", L"Friendly-name cache (MuiCache)");
         x.writer  = W_WIN;
@@ -508,20 +514,20 @@ std::vector<Footprint> CollectFootprints() {
     }
     // ---- 9. UserAssist counters ----------------------------------------
     {
-        Footprint x;
+        Residue x;
         x.group   = Group::Windows;
         x.label   = T(L"启动次数统计（UserAssist）", L"Launch counter (UserAssist)");
         x.writer  = W_WIN;
         x.where   = std::wstring(L"HKCU\\") + USERASSIST_KEY + L"\\{...}\\Count";
         x.note    = T(L"值名是 ROT13 编码的 exe 路径，记录启动次数与最后使用时间",
                       L"value names are ROT13-encoded exe paths; stores launch count and last-used time");
-        x.present = UserAssistFootprint(&d, &x.bytes) > 0;
+        x.present = UserAssistResidue(&d, &x.bytes) > 0;
         if (x.present) x.content = d + L" (" + FmtBytes(x.bytes) + L")";
         f.push_back(x);
     }
     // ---- 10. Prefetch ---------------------------------------------------
     {
-        Footprint x;
+        Residue x;
         x.group   = Group::Windows;
         x.label   = T(L"预读取记录（Prefetch）", L"Prefetch entry");
         x.writer  = W_WIN;
@@ -529,14 +535,14 @@ std::vector<Footprint> CollectFootprints() {
         x.note    = T(L"只有管理员可读。存在即说明系统预读过它；清理需要管理员权限",
                       L"administrators only; its presence means the system prefetched it. Cleanup "
                       L"needs elevation");
-        x.present = PrefetchFootprint(&d, &x.bytes) > 0;
+        x.present = PrefetchResidue(&d, &x.bytes) > 0;
         if (x.present) x.content = d + L" (" + FmtBytes(x.bytes) + L")";
         f.push_back(x);
     }
     // ---- 11. in-memory window marks ------------------------------------
     {
         WindowMarks m = MarkedWindows();
-        Footprint x;
+        Residue x;
         x.group   = Group::Ours;
         x.label   = T(L"窗口标记（只在内存中）", L"Window marks (memory only)");
         x.writer  = T(L"本程序；写在资源管理器窗口的属性里",
@@ -552,37 +558,39 @@ std::vector<Footprint> CollectFootprints() {
     return f;
 }
 
-FootprintTotals Summarize(const std::vector<Footprint> &items) {
-    FootprintTotals t;
+ResidueTotals Summarize(const std::vector<Residue> &items) {
+    ResidueTotals t;
     for (size_t i = 0; i < items.size(); ++i) {
-        const Footprint &x = items[i];
+        const Residue &x = items[i];
         if (!x.present || !x.deletable) continue;
         switch (x.group) {
         case Group::Ours:    ++t.ours;    t.ourBytes += x.bytes; break;
         case Group::Windows: ++t.windows; t.winBytes += x.bytes; break;
-        case Group::File:    break;   // the program is not a trace of itself
+        case Group::File:    break;   // the program is not a residue of itself
         }
     }
     return t;
 }
 
-FootprintTotals CurrentTotals() {
-    return Summarize(CollectFootprints());
+ResidueTotals CurrentTotals() {
+    return Summarize(CollectResidues());
 }
 
 std::wstring FormatItemCount(int n) {
     std::wstring s = Pad2(n);
-    s += T(L" 项", n == 1 ? L" item" : L" items");
+    // Chinese has no plural; the two English forms are separate T() calls so
+    // the extractor sees both literals and the table can translate the key once.
+    s += (n == 1) ? T(L" 项", L" item") : T(L" 项", L" items");
     return s;
 }
 
-std::wstring BuildFootprintReport(int *placesOut, DWORD *bytesOut) {
-    std::vector<Footprint> f = CollectFootprints();
-    FootprintTotals t = Summarize(f);
+std::wstring BuildResidueReport(int *placesOut, DWORD *bytesOut) {
+    std::vector<Residue> f = CollectResidues();
+    ResidueTotals t = Summarize(f);
 
     std::wstring s;
     s += L"ExplorerF11 " EF11_VERSION;
-    s += T(L" · 足迹报告\n", L" - footprint report\n");
+    s += T(L" · 残留报告\n", L" - residue report\n");
 
     s += T(L"程序：", L"program: ");
     s += ExePath();
@@ -595,19 +603,24 @@ std::wstring BuildFootprintReport(int *placesOut, DWORD *bytesOut) {
                st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
     s += T(L"时间：", L"time:    ");
     s += when;
-    s += T(L"（本机时间） · 界面语言：中文\n", L" (local) - UI language: English\n");
+    // The name is appended, never baked into the translated fragment: a fixed
+    // "UI language: <name>" pair could only ever name one language, which is
+    // how the Traditional Chinese report ended up claiming to be Simplified.
+    s += T(L"（本机时间） · 界面语言：", L" (local) - UI language: ");
+    s += LangName(GetLang());
+    s += L"\n";
 
     s += T(L"范围：", L"scope:   ");
     s += Pad2((int)f.size());
-    s += T(L" 个可能位置，分 3 组；下列每一项都会逐一核对，缺的也列出来。\n",
-           L" possible locations in 3 groups; each one is checked below, including the "
-           L"ones that are absent.\n");
+    s += T(L" 个可能位置，分 3 组；逐项列出检查结果，不存在的位置同样列示。\n",
+           L" possible locations in 3 groups; every one is listed below with its result, "
+           L"present or absent.\n");
     s += L"================================================================\n\n";
 
     // Verdict first: "how dirty is it" must be answerable without reading on.
     if (t.Clean()) {
         s += T(L"结论：干净 —— 系统里找不到任何与它相关的记录（0 项需要清理）。\n",
-               L"Verdict: clean - no trace of it anywhere (0 items to remove).\n");
+               L"Verdict: clean - no residue of it anywhere (0 items to remove).\n");
     } else {
         s += T(L"结论：共 ", L"Verdict: ");
         s += FormatItemCount(t.Total());
@@ -620,9 +633,9 @@ std::wstring BuildFootprintReport(int *placesOut, DWORD *bytesOut) {
         s += ItemsBytes(t.windows, t.winBytes);
         s += T(L"。\n", L".\n");
     }
-    s += T(L"      标注「可清理」的项目会被窗口里的「清理痕迹…」删除；程序本体不删除。\n\n",
-           L"      Items marked \"removable\" are deleted by \"Clean up…\" in this window; "
-           L"the exe is not.\n\n");
+    s += T(L"      标注「可清理」的项目会被窗口里的「清理残留…」删除；程序本体不删除。\n\n",
+           L"      Items marked \"removable\" are deleted by \"Clean residues…\" in this "
+           L"window; the exe is not.\n\n");
 
     const wchar_t *titles[3] = {
         T(L"── 一、本程序写入", L"-- 1. written by this program"),
@@ -635,7 +648,7 @@ std::wstring BuildFootprintReport(int *placesOut, DWORD *bytesOut) {
         bool header = false;
         int  idx    = 0;
         for (size_t i = 0; i < f.size(); ++i) {
-            const Footprint &x = f[i];
+            const Residue &x = f[i];
             if (x.group != order[g]) continue;
             if (!header) { s += titles[g]; s += L"\n\n"; header = true; }
 
@@ -664,13 +677,13 @@ std::wstring BuildFootprintReport(int *placesOut, DWORD *bytesOut) {
 
     s += T(L"注 1：注册表本身还有固定开销（每个键约 1 KB，每个值还有名称与头部开销），"
            L"这里只统计值数据与名称的字节数。\n"
-           L"注 2：Windows 自动记录的那几项删掉之后，下次运行还会重新生成 —— 这是系统行为，不是残留。\n"
-           L"注 3：本报告只读：生成报告不会修改任何一项；「清理痕迹…」按钮是唯一的删除入口，执行前会再确认一次。\n",
+           L"注 2：Windows 自动记录的那几项删掉之后，下次运行还会重新生成 —— 这是系统行为，不属于本程序留下的残留。\n"
+           L"注 3：本报告只读：生成报告不会修改任何一项；「清理残留…」按钮是唯一的删除入口，执行前会再确认一次。\n",
            L"Note 1: the registry adds fixed overhead (about 1 KB per key, plus per-value headers); "
            L"only value data and names are counted here.\n"
            L"Note 2: items recorded by Windows come back on the next run - that is OS behaviour, "
-           L"not residue.\n"
-           L"Note 3: this report is read-only: generating it changes nothing. The \"Clean up…\" button is the only place that deletes, and it asks first.\n");
+           L"not a residue left by this program.\n"
+           L"Note 3: this report is read-only: generating it changes nothing. The \"Clean residues…\" button is the only place that deletes, and it asks first.\n");
 
     if (placesOut) *placesOut = t.Total();
     if (bytesOut)  *bytesOut  = t.Bytes();
