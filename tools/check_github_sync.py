@@ -107,11 +107,12 @@ def local_sha256():
 
 
 # ---- prefetch -------------------------------------------------------------
-# Six independent read-only queries, each a network round trip of about 0.8 s.
+# Seven independent read-only queries, each a network round trip of about 0.8 s.
 # None of them depends on another, so running them at once changes nothing but
 # the wall clock: 8.0 s -> 2.4 s for the whole gate. The checks below still
 # consume them in order and print in order.
 import concurrent.futures
+import fnmatch
 
 
 def _fetch_release():
@@ -147,13 +148,33 @@ def _fetch_sums():
         return None, err or out
 
 
-_pool = concurrent.futures.ThreadPoolExecutor(max_workers=6)
+def _fetch_rulesets():
+    """The repository's rulesets, with their rules expanded.
+
+    The list endpoint returns names and targets but not the rules, so each one
+    is fetched. Both calls happen inside this worker, which keeps them off the
+    critical path: the six other queries are already in flight.
+    """
+    code, out, err = gh("api", "repos/%s/rulesets" % REPO)
+    if code != 0:
+        return None, err or out
+    details = []
+    for summary in json.loads(out or "[]"):
+        code, out, err = gh("api", "repos/%s/rulesets/%s" % (REPO, summary["id"]))
+        if code != 0:
+            return None, err or out
+        details.append(json.loads(out))
+    return details, ""
+
+
+_pool = concurrent.futures.ThreadPoolExecutor(max_workers=7)
 FETCH = {
     "auth": _pool.submit(gh, "auth", "status"),
     "release": _pool.submit(_fetch_release),
     "latest": _pool.submit(_fetch_latest),
     "repo": _pool.submit(_fetch_repo),
     "topics": _pool.submit(_fetch_topics),
+    "rulesets": _pool.submit(_fetch_rulesets),
     "sums": _pool.submit(_fetch_sums),
 }
 
@@ -342,6 +363,42 @@ missing = sorted(EXPECTED_TOPICS - names)
 check("主题包含全部 %d 项" % len(EXPECTED_TOPICS), not missing,
       ("missing: " + ", ".join(missing)) if missing else
       ("%d topics" % len(names)))
+
+print("==== 8. 服务端规则 ====")
+# "A published tag never moves" was a rule in docs/RELEASING.md and in this
+# script, which is a convention: anyone with push access could still rewrite a
+# tag and the rule would only notice afterwards. Two rulesets now enforce it
+# where the push happens. A rule that nobody checks is a rule that gets deleted
+# by accident, so the enforcement itself is a published surface.
+rulesets, err = FETCH["rulesets"].result()
+check("能读取规则集", rulesets is not None, "" if rulesets is not None else (err or "")[:120])
+rulesets = rulesets or []
+
+
+def _rule_types(predicate):
+    found = set()
+    for rs in rulesets:
+        if rs.get("enforcement") != "active" or not predicate(rs):
+            continue
+        found |= {r.get("type") for r in (rs.get("rules") or [])}
+    return found
+
+
+def _covers(rs, ref):
+    include = ((rs.get("conditions") or {}).get("ref_name") or {}).get("include") or []
+    return any(fnmatch.fnmatch(ref, pattern) for pattern in include)
+
+
+tag_rules = _rule_types(lambda rs: rs.get("target") == "tag"
+                        and _covers(rs, "refs/tags/%s" % TAG))
+check("活动规则：标签禁止删除", "deletion" in tag_rules, ", ".join(sorted(tag_rules)))
+check("活动规则：标签禁止改写", "non_fast_forward" in tag_rules, ", ".join(sorted(tag_rules)))
+
+branch_rules = _rule_types(lambda rs: rs.get("target") == "branch"
+                           and _covers(rs, "refs/heads/main"))
+check("活动规则：main 禁止删除", "deletion" in branch_rules, ", ".join(sorted(branch_rules)))
+check("活动规则：main 禁止非快进推送", "non_fast_forward" in branch_rules,
+      ", ".join(sorted(branch_rules)))
 
 _pool.shutdown()
 

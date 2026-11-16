@@ -268,23 +268,48 @@ tree no longer holds the code the notes describe: that is a new patch version
 under its own tag, not a re-point.
 
 A re-point is reserved for `src/` moving without the binary moving — a comment,
-a rename with no codegen effect. Prove it with the digest first:
+a rename with no codegen effect — and the ruleset below makes it a deliberate
+act rather than an accident. Prove the binary first, then lift the rule, move
+the tag, put the rule back:
 
 ```sh
 make -B && sha256sum dist/ExplorerF11.exe   # must equal the published digest
+gh api repos/QzCrane/ExplorerF11/rulesets --jq '.[]|select(.target=="tag").id'
+gh api -X DELETE repos/QzCrane/ExplorerF11/rulesets/<id>
 git tag -f -a vX.Y.Z -m "ExplorerF11 X.Y.Z (re-pointed: src/ comment only)"
 git push --force origin vX.Y.Z
+gh api -X POST repos/QzCrane/ExplorerF11/rulesets --input - <<'JSON'
+{"name":"published tags do not move","target":"tag","enforcement":"active",
+ "conditions":{"ref_name":{"include":["refs/tags/v*"],"exclude":[]}},
+ "rules":[{"type":"deletion"},{"type":"non_fast_forward"}]}
+JSON
 ```
 
 Never upload a different binary under an existing tag.
 
+Two rulesets enforce this where the push happens, not in this document:
+
+| Ruleset | Applies to | Rejects |
+|---|---|---|
+| `published tags do not move` | `v*` tags | deletion, non-fast-forward update |
+| `main is append-only` | `main` | deletion, non-fast-forward push |
+
+`make check-remote` requires both to be active, because a rule nobody checks is
+a rule that gets removed by accident. Two things to know before editing them: a
+push issued in the first seconds after creating a ruleset can still succeed, so
+an immediate test is not evidence that the rule is wrong; and while the tag
+ruleset is in place, moving a tag at all means deleting and recreating it — the
+intended amount of friction for an operation this document says should happen
+once in a project's life, if ever.
+
 ## 6. Confirm nothing on GitHub drifted
 
-Four facts live only on GitHub and are invisible to `git status`: the tag's tree,
-the release body, the uploaded assets and the repository description. All four
-have drifted before — a body copied from the previous release, a tag left one
-documentation commit behind, a description still quoting an old binary size —
-and each time a reader found it first. Check them mechanically:
+Five facts live only on GitHub and are invisible to `git status`: the tag's tree,
+the release body, the uploaded assets, the repository description and the rules
+that guard the published refs. The first four have drifted before — a body copied
+from the previous release, a tag left one documentation commit behind, a
+description still quoting an old binary size — and each time a reader found it
+first. Check them mechanically:
 
 ```sh
 make check-remote        # python tools/check_github_sync.py
@@ -292,7 +317,7 @@ make check-remote        # python tools/check_github_sync.py
 
 It fails unless the tag is an ancestor of `HEAD` with `src/` unchanged since,
 the asset's digest matches `SHA256SUMS.txt`, the notes quote this build's
-version, byte count and assertion count, and the description quotes this build's
-size. Run it before announcing a release and again after any commit that lands
+version and byte count, the description quotes this build's size, and both
+rulesets are active. Run it before announcing a release and again after any commit that lands
 once one is published; documentation commits pass, a commit that touches `src/`
 fails and means the release is due a new version.
