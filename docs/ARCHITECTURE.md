@@ -1,7 +1,7 @@
 # Architecture
 
 This document describes what the shipped binary does. It is written against
-version 1.0.4 and the source tree at that tag; where a claim depends on a Win32
+version 1.0.5 and the source tree at that tag; where a claim depends on a Win32
 detail, the detail is named so the claim can be checked. For user-facing
 behaviour see [USAGE.en.md](USAGE.en.md); for the evidence behind the F11 trick
 see [RESEARCH.md](RESEARCH.md).
@@ -307,7 +307,7 @@ including submenus as indented rows, so the layout test cannot drift from the UI
 Every suite restores the state it changed, including autostart and the stored
 language; the clean test only ever answers *No* to the confirmation.
 
-Fourteen gates, 369 assertions, each returning non-zero on failure:
+Fourteen gates, 356 assertions, each returning non-zero on failure:
 
 | Gate | Proves |
 |---|---|
@@ -318,20 +318,22 @@ Fourteen gates, 369 assertions, each returning non-zero on failure:
 | `check_gate_inventory.py` | every gate is classified CI-runnable or shell-dependent, CI runs exactly its subset, the table below lists each gate once |
 | `test_lang_names.py` | one name per language, identical in all five UI languages, matching the report header |
 | `test_menu_order.py` | exact rows, groups, ticks, five-way language radio group |
-| `test_residue_report.py` | report truth, five languages, live refresh, single confirmed clean entry |
+| `test_residue_report.py` | report truth, five languages, live refresh, single confirmed clean entry, UserAssist detection through ROT13 value names |
 | `test_registry_policy.py` | zero writes by default, defaults delete themselves |
 | `test_language.py` | resolution order, persistence, zero-write rule |
 | `test_icons.py` | icons and version block in the exe, tooltip refresh contract |
 | `test_tray_cleanup.py` | cleanup is surgical, other programs' entries survive |
-| `test_smoke.py` | real window accelerated, resource ceilings, clean exit |
-| `test_robustness.py` | source contracts for the event-driven fixes, behavioural CLI checks |
+| `test_smoke.py` | real window accelerated, start-up sweep and `--no-initial`, count follows a close, tray rebuilt after a `TaskbarCreated`, resource ceilings, clean exit |
+| `test_robustness.py` | behaviour for the CLI boundaries, white-box pins for four defects that have no outside trigger |
 
-The first three are static checks; the other nine need the built exe, and
+The first five are static checks; the other nine need the built exe, and
 `test_smoke.py` additionally needs a desktop session. Event-driven paths cannot
-be reproduced deterministically on a CI runner, so `test_robustness.py` pins
-their source contracts — recovery entries, tick validation, handle ownership,
-icon ownership and argument boundaries — rather than pretending to drive real
-shell events. This is a deliberate limit of the verification story.
+be reproduced deterministically on a CI runner, so `test_robustness.py` pins the
+*source properties* of four of them — a call-site count, a forbidden pattern, an
+ordering between a check and the action it guards. Those pins are labelled
+`WHITE-BOX` in the file and each names what would be needed to observe it for
+real; everything that can be driven was moved to a suite that drives it. This is
+a deliberate limit of the verification story, not a substitute for one.
 
 ## Performance measurement
 

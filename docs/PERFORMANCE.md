@@ -435,6 +435,14 @@ second to tick *before* posting the command (at most 0.5 s, average 0.5) and
 then polls; the 1.2 s it replaced was slower and only passed when the rebuild
 happened to land in a different second.
 
+A later pass over test quality moved the total back up: `make test` is 8.6 s,
+because `test_smoke` now opens and closes real windows to observe three things
+that used to be grepped out of `src/` (the start-up sweep and `--no-initial`, the
+window count following a close, and the tray surviving a `TaskbarCreated`), and
+`test_residue_report` plants a UserAssist entry to prove the ROT13 value names
+are read. That is 2.4 s bought with assertions that fail when the behaviour is
+wrong rather than when a line is formatted differently.
+
 ### The build compiled serially
 
 The release build handed `src/*.cpp` and `src/app.rc` to a single `g++` command,
@@ -482,7 +490,7 @@ Three rejected optimisations, with the number that settles them:
 
 - **Run the gates in parallel** (would save ~4 s): they share one
   registry key, one hidden window and one autostart entry. Overlapping them
-  would test the tests. The suite is 6 s; the risk is a flaky gate in the release
+  would test the tests. The suite is 8.6 s; the risk is a flaky gate in the release
   path, which is the worst place to have one.
 - **Run the static checks while the suites run** (would save under a second):
   every suite locates the application by window class, and a concurrent launch

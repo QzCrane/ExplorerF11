@@ -111,7 +111,8 @@ static const UINT IDC_STATUS_COPY = 2002;
 static const UINT IDC_STATUS_CLEAN = 2003;
 static const UINT IDC_STATUS_CLOSE = 2004;
 static const UINT TRAY_ID        = 1001;
-static const UINT_PTR RISK_TIMER = 1;
+static const UINT_PTR RISK_TIMER   = 1;
+static const UINT_PTR SETTLE_TIMER = 2;   // one-shot: rebuild once a window is really gone
 static const UINT WM_APP_INITIAL = WM_APP + 1;   // start-up sweep, after the loop runs
 static const UINT WM_APP_REFRESH = WM_APP + 2;   // coalesced rebuild of an open report
 
@@ -1143,10 +1144,18 @@ static LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wParam, LPARAM lParam) 
                 OnStateChanged();   // one more window than the tip currently claims
             }
         } else if (wParam == HSHELL_WINDOWDESTROYED) {
-            // Closing a window lowers the count. Only windows carrying our mark
-            // can change it, so the other few hundred closes cost nothing.
+            // Closing a window lowers the count, but not yet: the shell sends
+            // this while the window still exists and still carries our mark
+            // (measured: IsWindow and IsMarked were both true, and the
+            // properties disappeared ~50 ms later). Rebuilding here counted a
+            // window that was on its way out, and because the report's refresh
+            // is posted with that snapshot, nothing ever read the desktop
+            // again: the tray and an open report kept a number that only grew.
+            // Deferring by one short timer puts the read after the destroy
+            // finishes; the set drops the entry when IsWindow says it is gone.
+            // A burst of closes collapses into the single timer.
             HWND gone = reinterpret_cast<HWND>(lParam);
-            if (gone && IsMarked(gone)) OnStateChanged();
+            if (gone && IsMarked(gone)) SetTimer(h, SETTLE_TIMER, 60, NULL);
         } else if (wParam == HSHELL_WINDOWACTIVATED || wParam == HSHELL_RUDEAPPACTIVATED) {
             // Remember the last folder window the user worked in; the tray menu
             // needs it because at click time the foreground is the taskbar.
@@ -1243,6 +1252,9 @@ static LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wParam, LPARAM lParam) 
                 changed = true;
             }
             if (changed) OnStateChanged();   // those windows no longer count
+        } else if (wParam == SETTLE_TIMER) {
+            KillTimer(h, SETTLE_TIMER);
+            OnStateChanged();                // the closed window is gone by now
         }
         return 0;
 

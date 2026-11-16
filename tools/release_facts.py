@@ -16,14 +16,14 @@ Provenance:
                (MSVC is not byte-identical, so no build-time size assertion)
 """
 
-VERSION = "1.0.4"
+VERSION = "1.0.5"
 ASSET = "ExplorerF11-" + VERSION + "-win64.exe"
 CHECKSUM = "SHA256SUMS.txt"
 
 GATES = 14
 STATIC_CHECKS = 5
 SUITES = 9
-ASSERTIONS = 369
+ASSERTIONS = 356
 
 SIZE_KIB = 411
 # Private bytes move by tens of KB between runs: 1.76-1.77 MB observed for this

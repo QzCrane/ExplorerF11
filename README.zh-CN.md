@@ -42,11 +42,11 @@ ExplorerF11 用 `PostMessageW` 把这两次按键直接投进目标窗口的消�
 ## 安装与首次运行
 
 从[最新发行版](https://github.com/QzCrane/ExplorerF11/releases/latest)下载
-`ExplorerF11-1.0.4-win64.exe`，核对哈希，放到一个固定位置——它不写文件，放哪都行，
+`ExplorerF11-1.0.5-win64.exe`，核对哈希，放到一个固定位置——它不写文件，放哪都行，
 推荐 `%LOCALAPPDATA%\Programs\ExplorerF11\`。
 
 ```powershell
-Get-FileHash .\ExplorerF11-1.0.4-win64.exe -Algorithm SHA256
+Get-FileHash .\ExplorerF11-1.0.5-win64.exe -Algorithm SHA256
 ```
 
 二进制**未做代码签名**，首次运行 SmartScreen 会警告。请先与发行页上的 SHA-256 比对。
@@ -139,7 +139,7 @@ make test
 ```
 
 纯 C++23 + Win32，只导入 `user32`、`shell32` 和 `advapi32`。`make test` 跑 14 道闸门：
-5 项静态检查和 9 个直接驱动编译产物的套件，合计 369 项断言。冒烟测试会打开真实的文件夹
+5 项静态检查和 9 个直接驱动编译产物的套件，合计 356 项断言。冒烟测试会打开真实的文件夹
 窗口，需要桌面会话。其中 `tests/test_robustness.py` 锁定的是 CI 无法复现的事件驱动路径与
 CLI 行为：Shell 钩子恢复、带句柄复用的 F11 恢复、控制台句柄所有权、图标所有权和参数解析。
 

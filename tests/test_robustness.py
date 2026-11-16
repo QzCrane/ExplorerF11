@@ -1,30 +1,43 @@
 #!/usr/bin/env python3
-"""Regression tests for the robustness defects found in the 1.0.0 audit.
+"""Regression pins for defects that have no cheap outside trigger.
 
     python tests/test_robustness.py
 
-These defects were invisible to CI and to the existing suites:
+Every assertion here says which kind it is:
 
-  1. On explorer restart, a failed shell-hook re-registration called
-     RelaunchSelf() (synchronous DestroyWindow) and then still added a tray
-     icon on the dead HWND -> an orphan, unclickable tray icon.
-  2. The partial-F11 recovery used a single g_risk slot; a second failure
-     within 500 ms overwrote the first, whose stuck fullscreen stayed stuck.
-  3. That recovery trusted IsWindow() alone, so a recycled HWND could be
-     poked with F11 and have its marks stripped, corrupting another window.
-  4. ConsoleOut()'s CONOUT$ handle was never closed (owned/borrowed confused).
-  5. A bare trailing `--lang` was misreported as an unknown option.
+  BEHAVIOURAL  the real binary runs and its output is read. No source text.
+  WHITE-BOX    the trigger cannot be produced from outside the process, so the
+               guarantee is pinned where it is encoded. These assert a property
+               - a call-site count, a forbidden pattern, an ordering between a
+               check and the action it guards - never a formatted line, and
+               never a literal that a rename would break.
 
-  6. app.rc bumped only the StringFileInfo strings to 1.0.1, leaving the
-     binary VS_FIXEDFILEINFO block at 1.0.0.0 (see test_icons.py Raw asserts).
-  7. The tray-residue line always printed " entries", so one record read
-     "1 entries" in English.
+The white-box ones cover four defects, each with the reason it cannot be driven:
 
-For (1)-(4) the observable behaviour needs live shell events that cannot be
-driven deterministically, so the guarantee is asserted where it is encoded:
-the source contracts. (5) is asserted behaviourally through the real CLI.
-(6)-(7) are asserted in test_icons.py / test_residue_report.py where those
-artefacts are read.
+  * a shell-hook re-registration failure that called RelaunchSelf() and then
+    added a tray icon on the destroyed window. Producible only by making
+    RegisterShellHookWindow fail, which no supported API allows. What *is*
+    observable - the handler survives a TaskbarCreated and still delivers shell
+    events afterwards - lives in tests/test_smoke.py.
+  * a single-slot recovery queue that lost the first of two failures within
+    500 ms, and trusted IsWindow() alone so a recycled HWND could be poked.
+    Needs a window that accepts WM_KEYDOWN and then ignores F11; no such window
+    exists on demand.
+  * ConsoleOut() closing a handle it did not own. Observable only as a handle
+    count inside a console-attached process; the CLI detaches early.
+  * returning a system shared icon to a caller that destroys it. The corruption
+    surfaces in unrelated windows minutes later.
+
+Everything that used to be pinned here as "this exact line is in main.cpp" has
+moved to a suite that can observe it:
+
+    startup sweep, --no-initial, live window count, tray rebuild after an
+    explorer restart ............................... tests/test_smoke.py
+    UserAssist detection (ROT13 value names) ....... tests/test_residue_report.py
+    report-window icon ............................. tests/test_smoke.py
+
+The remaining behavioural and artefact checks are kept: --lang diagnostics, the
+menu's count against the report's count, and the icon format contract.
 """
 
 import sys as _sys
@@ -34,6 +47,7 @@ if hasattr(_sys.stdout, "reconfigure"):
 
 import os
 import re
+import struct
 import subprocess
 import sys
 
@@ -41,6 +55,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 EXE = os.path.join(ROOT, "dist", "ExplorerF11.exe")
 MAIN = os.path.join(ROOT, "src", "main.cpp")
+RESIDUE = os.path.join(ROOT, "src", "residue.cpp")
 
 results = []
 
@@ -56,44 +71,95 @@ def check_true(name, cond, detail=""):
     return check(name + (("  [" + detail + "]") if detail else ""), bool(cond), True)
 
 
+def blocks(path, signature):
+    """Every function body whose definition starts with the given signature.
+
+    The brace after the signature matters: main.cpp forward-declares most of
+    these, and a declaration is not a body.
+    """
+    text = open(path, encoding="utf-8").read()
+    return [m.group(0) for m in
+            re.finditer(r"(?ms)" + signature + r"\s*\{.*?\n\}", text)]
+
+
 src = open(MAIN, encoding="utf-8").read()
-src_res = open(os.path.join(ROOT, "src", "residue.cpp"), encoding="utf-8").read()
+src_res = open(RESIDUE, encoding="utf-8").read()
 
-print("==== 1. explorer 重启自愈：失败分支不得再碰已销毁的 h ====")
-check_true("单槽 g_risk 已移除（不再有 g_risk =）",
+print("==== 1. 回收队列：多窗口 + token 校验（白盒，无法从外部触发）====")
+# A second failure inside 500 ms used to overwrite the first entry, and the
+# overwritten window's half-applied F11 stayed that way. One slot is the bug;
+# the container is the fix. Then: a recycled HWND must be recognised, which is
+# only possible by comparing the tick recorded with the entry. The tick check
+# has to *precede* the poke - that ordering is the whole guarantee, so it is
+# asserted as an ordering, not as a line.
+check_true("已无单槽 g_risk（多窗口不再互相覆盖）",
            re.search(r"\bg_risk\s*=", src) is None)
-check_true("RelaunchSelf 与 AddTray(h) 不在同一失败路径",
-           "RelaunchSelf();\n        }\n        return 0;" in src,
-           "")
-check_true("成功分支仍重建托盘（AddTray 保留）", "AddTray(h);" in src)
-# The dead-HWND pattern that caused the bug: RelaunchSelf immediately followed
-# by RemoveTray/AddTray with no return in between.
-check_true("无 'RelaunchSelf() 后继续 AddTray(h)' 模式",
-           re.search(r"RelaunchSelf\(\);\s*\n\s*(?:RemoveTray|AddTray)\(h\)", src) is None)
+check_true("待恢复项是 (hwnd, tick) 的容器",
+           re.search(r"struct RiskEntry\s*\{\s*HWND\s+\w+;\s*ULONG_PTR\s+\w+;\s*\};"
+                     r"\s*static std::vector<RiskEntry>\s+\w+;", src) is not None)
+_guard = re.search(r"(?s)if\s*\(\s*!IsMarked\(\w+\)\s*\|\|\s*MarkedAt\(\w+\)\s*!=\s*\w+\.tick\s*\)"
+                   r"\s*continue;(.{0,400}?)PostMessageW\(\w+,\s*WM_KEYDOWN", src)
+check_true("token 不符的窗口在投递 F11 之前被跳过", _guard is not None)
 
-print("\n==== 2+3. 恢复机制：多窗口 + token 校验 ====")
-check_true("待恢复窗口是容器而非单槽", "std::vector<RiskEntry> g_risks" in src)
-check_true("RiskEntry 同时记录 hwnd 与 tick",
-           re.search(r"struct RiskEntry\s*\{\s*HWND hwnd;\s*ULONG_PTR tick;", src) is not None)
-check_true("入队前按 (hwnd,tick) 去重",
-           "if (!tracked) g_risks.push_back({h, tick});" in src)
-check_true("恢复时用 MarkedAt 校验 token", "MarkedAt(r) != e.tick" in src)
-check_true("token 不符则跳过（不 poke、不 RemoveProp）",
-           re.search(r"if \(!IsMarked\(r\) \|\| MarkedAt\(r\) != e\.tick\) continue;", src) is not None)
-check_true("遍历全部待恢复窗口", "for (const RiskEntry &e : pending)" in src)
-check_true("批量处理用 swap 清空队列", "pending.swap(g_risks)" in src)
+print("\n==== 2. ConsoleOut 句柄所有权（白盒，句柄数在进程内不可见）====")
+# The bug was closing a borrowed CONOUT$ handle. Ownership now travels with the
+# handle, so the close can be conditional. Both halves are required: a flag that
+# nothing reads would pass a single-line check.
+check_true("ConsoleOut 报告句柄是否归自己",
+           re.search(r"HANDLE\s+ConsoleOut\(\s*bool\s*\*\s*\w+\s*\)", src) is not None)
+check_true("只有自有句柄才 CloseHandle",
+           re.search(r"if\s*\(\s*\w+\s*\)\s*CloseHandle\(\s*\w+\s*\);", src) is not None)
 
-print("\n==== 4. ConsoleOut 句柄所有权 ====")
-check_true("ConsoleOut 带 owned 输出参数", "static HANDLE ConsoleOut(bool *owned)" in src)
-check_true("每条返回路径都设置 owned",
-           src.count("*owned = ") >= 2, str(src.count("*owned = ")))
-check_true("仅 owned 句柄被 CloseHandle", "if (owned) CloseHandle(out);" in src)
-check_true("Emit 使用 owned 局部变量", "bool owned = false;\n    HANDLE out = ConsoleOut(&owned);" in src)
+print("\n==== 3. 系统共享图标不交给调用方销毁（白盒）====")
+# The old fallback handed the shell's shared IDI_APPLICATION to callers that
+# destroy what they get. Nothing observable changes at the moment of the bug -
+# the damage appears in a different window, later - so the forbidden pattern is
+# pinned instead: never return a shared icon handle as if it were private.
+check_true("回退不再直接返回共享系统图标",
+           re.search(r"return\s+\w+\s*\?\s*\w+\s*:\s*LoadIconW\(", src) is None)
 
-print("\n==== 5. 系统共享图标不被误销毁 ====")
-check_true("回退不再直接返回共享图标给调用方销毁",
-           "return h ? h : LoadIconW(NULL, IDI_APPLICATION);" not in src)
-check_true("回退走 DuplicateIcon 取私有副本", "DuplicateIcon(GetModuleHandleW(NULL), sys)" in src)
+print("\n==== 4. 托盘表面：一次推送，未变不发 IPC（白盒，IPC 不可计数）====")
+# No API reports how many NIM_MODIFY round trips went to the shell, and the
+# shell offers no read-back of a tooltip. What is checkable is the shape that
+# makes the count true: one funnel, one call inside it, an early return when the
+# freshly computed surface equals the last one, and bookkeeping only on success.
+_on = blocks(MAIN, r"static void OnStateChanged\(\)")
+check_true("OnStateChanged 存在", len(_on) == 1)
+if _on:
+    check("状态变化只经一个推送函数", _on[0].count("PushTraySurface("), 1)
+    check("窗口快照每轮只取一次", _on[0].count("MarkedWindows()"), 1)
+_push = blocks(MAIN, r"static void PushTraySurface\([^)]*\)")
+check_true("PushTraySurface 存在", len(_push) == 1)
+if _push:
+    check("推送函数内只有一次 Shell_NotifyIconW", _push[0].count("Shell_NotifyIconW"), 1)
+    check_true("未变的表面提前返回（不发 IPC）",
+               re.search(r"if\s*\(\s*g_trayLive\s*&&\s*icon\s*==\s*g_lastIcon\s*"
+                         r"&&\s*tip\s*==\s*g_lastTip\s*\)\s*return;", _push[0]) is not None)
+    check_true("只有推送成功才记账",
+               re.search(r"if\s*\(\s*Shell_NotifyIconW\(", _push[0]) is not None)
+check_true("旧的两次往返入口已删除",
+           re.search(r"static void UpdateTrayIcon\s*\(", src) is None)
+# Removing the icon invalidates the bookkeeping, or the next push believes the
+# shell still holds a surface that is gone and skips the NIM_ADD.
+_rm = blocks(MAIN, r"static void RemoveTray\([^)]*\)")
+check_true("删除托盘后失效记账", _rm and "g_trayLive = false;" in _rm[0])
+
+print("\n==== 5. 标记集合只有一个写入点（白盒，集合与整桌扫描等价需活桌面）====")
+# MarkedWindows keeps a set instead of re-enumerating every top-level window per
+# state change. The set can only stay equal to the desktop if PROP_MARK has one
+# writer; a second writer would silently desynchronise the count in the tray,
+# the menu and the report. tools/verify_marks.cpp checks the same equivalence
+# against a live desktop, which is not something a gate can do.
+check("PROP_MARK 只有一个写入点",
+      len(re.findall(r"SetPropW\(\s*\w+\s*,\s*PROP_MARK", src_res + src)), 1)
+# Dropping the entry is only safe once the property is really gone: trusting the
+# caller would let one mistaken unmark under-count for the rest of the process,
+# and the read-side validation can remove an entry but never discover one.
+_unmark = blocks(RESIDUE, r"void RecordWindowUnmark\([^)]*\)")
+check_true("注销只剪掉属性确已消失的条目",
+           _unmark and re.search(r"\{\s*(?://[^\n]*\n\s*)*if\s*\(\s*GetPropW\("
+                                 r"\w+,\s*PROP_MARK\s*\)\s*\)\s*return;",
+                                 _unmark[0]) is not None)
 
 print("\n==== 6. --lang 缺值诊断（行为断言）====")
 check_true("exe 存在", os.path.exists(EXE), EXE)
@@ -111,67 +177,7 @@ if os.path.exists(EXE):
         check_true("不再误报未知选项 (%s)" % tag,
                    "Unknown option" not in out and "未知选项" not in out)
 
-print("\n==== 7. 托盘表面：一次推送，且只在字节变化时发 IPC ====")
-# Every state change (create/destroy/restore/tab/pause/apply/apply-all/
-# recovery/sweep) funnels through OnStateChanged. It used to issue two
-# NIM_MODIFY round trips (icon, then tip); 1.0.3 merged them into one. This
-# suite pins the follow-up: one push function, one IPC, and no IPC at all when
-# the freshly computed surface equals what the shell already holds.
-_on_state = re.search(r"(?ms)static void OnStateChanged\(\) \{.*?\n\}", src)
-check_true("OnStateChanged 存在", _on_state is not None)
-if _on_state:
-    body = _on_state.group(0)
-    check_true("状态变化只经一个推送函数",
-               body.count("PushTraySurface(") == 1, str(body.count("PushTraySurface(")))
-    check_true("窗口快照仍只取一次", body.count("MarkedWindows()") == 1,
-               str(body.count("MarkedWindows()")))
-_push = re.search(r"(?ms)static void PushTraySurface\(.*?\n\}", src)
-check_true("推送函数存在", _push is not None)
-if _push:
-    pb = _push.group(0)
-    check_true("只发一次 NIM_MODIFY", pb.count("Shell_NotifyIconW") == 1,
-               str(pb.count("Shell_NotifyIconW")))
-    check_true("单次 NIM_MODIFY 携带 icon+tip+showtip 三个 flag",
-               "NIF_ICON | NIF_TIP | NIF_SHOWTIP" in pb)
-    check_true("NIF_SHOWTIP 仍与 NIF_TIP 同行（不丢悬浮提示）",
-               "NIF_TIP | NIF_SHOWTIP" in pb)
-    check_true("表面与上次相同时不发 IPC",
-               "icon == g_lastIcon && tip == g_lastTip) return;" in pb)
-    check_true("只有推送成功才记账（失败下次重试）",
-               "if (Shell_NotifyIconW(NIM_MODIFY, &nid)) {" in pb)
-check_true("UpdateTrayIcon 双调用已消除（无残留定义）",
-           re.search(r"static void UpdateTrayIcon\s*\(", src) is None)
-check_true("UpdateTrayTip 保留供 hover/language 单独刷新",
-           "static void UpdateTrayTip(const WindowMarks &m)" in src
-           and "static void UpdateTrayTip()" in src)
-check_true("托盘删除后失效记账（下次必须重建）", "g_trayLive = false;" in src)
-
-print("\n==== 8. 报告刷新合并 / 复制复用 ====")
-# A full report rebuild re-probes eleven locations (~1.3 ms). A burst of shell
-# events used to run it once per event; now the event marks the report dirty
-# and posts one refresh, which still reads live state.
-_ref = re.search(r"(?ms)static void RefreshStatusIfOpen\(.*?\n\}", src)
-check_true("刷新先标记再投递", _ref is not None and "g_statusDirty = true;" in _ref.group(0))
-check_true("投递只排队一次", _ref is not None and "!g_refreshPosted" in _ref.group(0))
-_h = re.search(r"(?ms)case WM_APP_REFRESH:.*?return 0;", src)
-check_true("合并消息处理器存在且清脏标记",
-           _h is not None and "g_statusDirty = false;" in _h.group(0))
-_copy = re.search(r"(?ms)case IDC_STATUS_COPY:(.*?)break;", src)
-check_true("复制复用编辑框内容（不重复扫描注册表）",
-           _copy is not None and "GetWindowTextLengthW" in _copy.group(1))
-
-print("\n==== 9. --no-initial 只影响本次运行 ====")
-# The flag was parsed and then overwritten by the registry read two statements
-# later, so it had never suppressed anything. It now has its own run-scoped
-# flag: the sweep is skipped, the persisted setting (and the menu tick) is not.
-check_true("--no-initial 有独立的运行期开关",
-           "static bool  g_skipInitial       = false;" in src)
-check_true("--no-initial 不再写 g_initial",
-           re.search(r"--no-initial\"\) == 0\) g_initial = false", src) is None)
-check_true("启动扫描同时检查持久设置与本次开关",
-           "if (g_initial && !g_skipInitial)" in src)
-
-print("\n==== 10. 菜单计数 = 报告计数 ====")
+print("\n==== 7. 菜单计数 = 报告计数（行为断言）====")
 # The menu label reads a presence-only scan, the report reads the full one.
 # Same rows, same rules, so the two numbers must agree; this is the check that
 # keeps a future probe edit from making the menu lie about how dirty it is.
@@ -196,54 +202,7 @@ check_true("两处都用同一套行（干净时同样读 0）",
            ("clean" in _label[0]) == (_report_n == 0) if _label else False,
            str(_menu_n) + "/" + str(_report_n))
 
-print("\n==== 11. 标记窗口集合：维护而非每次重枚举 ====")
-# MarkedWindows used to walk every top-level window and read our property once
-# per window (~0.28 ms on a 360-window desktop, 88% of it the property read).
-# It now keeps a validated set. The set can only stay honest if all three of
-# these hold, so each is pinned at the source contract.
-# tools/verify_marks.cpp checks the same equivalence against a live desktop.
-_res = src_res
-_set_prop_mark = re.findall(r"SetPropW\(\s*\w+\s*,\s*PROP_MARK", _res + src)
-check("PROP_MARK 只有一个写入点", len(_set_prop_mark), 1)
-_mark = re.search(r"(?ms)static void Mark\(HWND h\) \{.*?\n\}", src)
-check_true("Mark() 报告给集合", _mark is not None and "RecordWindowMark(h)" in _mark.group(0))
-_unmark_site = re.search(r"(?ms)RemovePropW\(r, PROP_MARK\);.*?RecordWindowUnmark\(r\);", src)
-check_true("RemovePropW 之后注销集合", _unmark_site is not None)
-_mw = re.search(r"(?ms)WindowMarks MarkedWindows\(\) \{.*?\n\}", _res)
-check_true("MarkedWindows 存在", _mw is not None)
-if _mw:
-    body = _mw.group(0)
-    code = re.sub(r"(?m)//.*$", "", body)   # comments may name the call
-    check_true("首次读取先播种整桌扫描", "SeedMarkedSet()" in code)
-    check_true("每次读取用 IsWindow 校验", "IsWindow(h)" in code)
-    check_true("每次读取用 GetPropW 校验", "GetPropW(h, PROP_MARK)" in code)
-    check_true("不在读取路径里重新枚举整桌", "EnumWindows(" not in code)
-_ru = re.search(r"(?ms)void RecordWindowUnmark\(HWND h\) \{.*?\n\}", _res)
-check_true("注销前确认属性确已消失（防漏计）",
-           _ru is not None and "if (GetPropW(h, PROP_MARK)) return;" in _ru.group(0))
-_seed = re.search(r"(?ms)void SeedMarkedSet\(\) \{.*?\n\}", _res)
-check_true("播种用属性过滤整桌", _seed is not None and
-           "GetPropW(h, PROP_MARK)" in _seed.group(0))
-
-print("\n==== 12. UserAssist：轮换针，而不是解码每个值名 ====")
-# ROT13 is a per-character bijection that commutes with case folding, so
-# ContainsI(RoT13(name), needle) == ContainsI(name, RoT13(needle)). Rotating the
-# needle once removes a string build plus a per-character pass per value
-# (~43% of the match cost on this machine). tools/bench_ua_match.cpp proves the
-# equivalence on the live registry.
-_ua = re.search(r"(?ms)int UserAssistResidue\(.*?\n\}", _res)
-check_true("UserAssistResidue 存在", _ua is not None)
-if _ua:
-    body = _ua.group(0)
-    check_true("针在循环外轮换一次", "const std::wstring needle = RoT13(EXE_BASE);" in body)
-    check_true("循环内不再逐个解码值名", "RoT13(name)" not in body)
-    check_true("循环内直接搜原始值名", "ContainsI(name, needle.c_str())" in body)
-_dmv = re.search(r"(?ms)int DeleteMatchingValues\(.*?\n\}", _res)
-check_true("清理路径同样在循环外轮换针",
-           _dmv is not None and "const std::wstring target = rot13" in _dmv.group(0)
-           and "RoT13(name)" not in _dmv.group(0))
-
-print("\n==== 11. 图标的小尺寸必须是未压缩 DIB ====")
+print("\n==== 8. 图标的小尺寸必须是未压缩 DIB（构件断言）====")
 # Windows decodes a PNG-compressed icon through WIC, and that one call loads
 # WindowsCodecs.dll into the process: 2.3 MB of code pages and ~100 KB of private
 # commit for a 16x16 tray bitmap. The fix is to store the sizes the program
@@ -251,17 +210,16 @@ print("\n==== 11. 图标的小尺寸必须是未压缩 DIB ====")
 # uncompressed DIB, while the large sizes stay PNG for Explorer's thumbnail
 # views - Explorer decodes those in its own process, so they cost this program
 # nothing. This check fails if anyone saves the small sizes back as PNG.
-import struct as _struct
 
 
 def _icon_formats(path):
     data = open(path, "rb").read()
-    reserved, kind, count = _struct.unpack_from("<HHH", data, 0)
+    reserved, kind, count = struct.unpack_from("<HHH", data, 0)
     if reserved != 0 or kind != 1:
         raise ValueError("not an icon: " + path)
     out = []
     for i in range(count):
-        w, h, _c, _r, _p, _bpp, size, off = _struct.unpack_from(
+        w, h, _c, _r, _p, _bpp, size, off = struct.unpack_from(
             "<BBBBHHII", data, 6 + i * 16)
         blob = data[off:off + 8]
         fmt = "png" if blob[:8] == b"\x89PNG\r\n\x1a\n" else "dib"
@@ -283,15 +241,15 @@ for name in ("ExplorerF11.ico", "ExplorerF11-paused.ico"):
     check_true(name + " 的 16-48 全是 DIB（否则加载 WIC）", not bad_small, str(bad_small))
     check_true(name + " 保留 256 供资源管理器用", (256, 256) in fmt, str(sorted(fmt)))
 
-print("\n==== 12. 图标工具可复现 ====")
+print("\n==== 9. 图标重写工具可复现（构件断言）====")
 # The rewrite that produced those icons is a script in tools/, not a manual
 # edit, so it can be re-run and audited. It must prove pixel equality itself.
 _mk = os.path.join(ROOT, "tools", "make_ico_bmp.py")
 check_true("tools/make_ico_bmp.py 存在", os.path.exists(_mk), _mk)
 if os.path.exists(_mk):
-    _src = open(_mk, encoding="utf-8").read()
-    check_true("工具会比对转换前后的像素", "pixels identical" in _src)
-    check_true("工具不静默放过像素差异", "pixel mismatch" in _src)
+    _tool = open(_mk, encoding="utf-8").read()
+    check_true("工具会比对转换前后的像素", "pixels identical" in _tool)
+    check_true("工具不静默放过像素差异", "pixel mismatch" in _tool)
 
 bad = [r for r in results if not r[0]]
 print("\n%s  %d/%d 通过" % ("ALL PASS" if not bad else "FAILURES",

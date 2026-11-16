@@ -6,6 +6,49 @@ All notable changes to this project. Versions follow [SemVer](https://semver.org
 used while the tool was still being shaped; none of them was ever published, and
 they are kept below as build history rather than as releases.
 
+## 1.0.5 - 2026-11-16
+
+The count of accelerated windows only ever went up. Closing a folder window left
+the tray tooltip, the menu header and an open residue report showing the old
+number until some later event happened to refresh them.
+
+The shell reports `HSHELL_WINDOWDESTROYED` while the window still exists and
+still carries the mark — measured: `IsWindow` and `IsMarked` both true, the
+properties gone about 50 ms later. The handler rebuilt the surfaces at that
+instant, so the read still counted the dying window; and because the report
+refreshes from the snapshot taken at that instant, nothing read the desktop
+again afterwards. The rebuild now waits for a 60 ms one-shot timer, by which
+time `IsWindow` says the window is gone and the maintained set drops it. Bursts
+of closes collapse into the one timer. The binary is 420,864 bytes (411 KiB),
+the same as 1.0.4: the fix costs a timer and a message handler, not a structure.
+
+### Tests: the mirror assertions are gone
+
+Roughly fifty assertions in `test_robustness.py` and `test_icons.py` were of the
+form "this exact line is in `main.cpp`". They went red when a rename preserved
+behaviour and green when the guarded code was dead — which is what the count bug
+above was: the line `IsMarked(gone)) OnStateChanged();` was present and its
+contract test passed while the feature was broken.
+
+Every guarantee that could be observed from outside now is:
+
+- `test_smoke.py` opens and closes real windows and reads the report the program
+  drew: the start-up sweep and `--no-initial`, the count following a close, and
+  the tray surviving a `TaskbarCreated` (same pid, hook re-registered, events
+  still arriving). It also asks the report window for its icons with
+  `WM_GETICON` instead of grepping `WM_SETICON`.
+- `test_residue_report.py` plants a UserAssist entry whose value name is
+  `ROT13(path)`, the way Windows stores it, and requires the report's count to
+  rise by exactly one — the rotation is the only thing that makes detection work.
+- What is left in `test_robustness.py` is marked `WHITE-BOX`, one assertion per
+  defect that has no outside trigger, each naming the observation that is
+  missing. They assert a property (a call-site count, a forbidden pattern, an
+  ordering), never a formatted line.
+
+Each of the new assertions was checked by putting the defect back: reverting the
+timer, ignoring `--no-initial`, dropping the tick comparison, removing the
+memoised early return and adding a second `PROP_MARK` writer all go red.
+
 ## 1.0.4 - 2026-11-16
 
 A pass over every behaviour, speed and memory alike, not just the two that had

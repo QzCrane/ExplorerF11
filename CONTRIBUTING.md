@@ -45,6 +45,10 @@ Three rules for tests:
 
 - every gate asserts and exits non-zero on failure. Printing a report for a
   human to read is not a test;
+- a test observes the program from outside. Run it, read what it wrote, ask the
+  window it drew, check the registry it touched. Reading `src/` and matching a
+  line is allowed only where no outside observation exists at all, it is marked
+  `WHITE-BOX` in the file, and it names the observation that is missing;
 - a test that changes state restores it, including autostart and the stored
   language — see `test_registry_policy.py`;
 - a test never deletes a real user's settings. The clean-button test only runs

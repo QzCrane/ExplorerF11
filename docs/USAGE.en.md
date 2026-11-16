@@ -46,7 +46,7 @@ Right-clicking the tray icon builds a fixed five-part menu from
 `BuildTrayMenu()`:
 
 ```
-ExplorerF11 1.0.4  ·  3 windows accelerated (5 tabs)   <- grey, not clickable
+ExplorerF11 1.0.5  ·  3 windows accelerated (5 tabs)   <- grey, not clickable
 ────────────────────────────
 Apply to all open windows
 Apply to the active window
@@ -84,7 +84,7 @@ is always preceded by the list of what it will remove. It carries a trailing
 header states where the data comes from:
 
 ```
-ExplorerF11 1.0.4 - residue report
+ExplorerF11 1.0.5 - residue report
 program: D:\Tools\ExplorerF11.exe
 time:    2026-11-15 11:20:31 (local) - UI language: English
 scope:   11 possible locations in 3 groups; every one is listed below with its

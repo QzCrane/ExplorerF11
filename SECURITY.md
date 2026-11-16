@@ -82,9 +82,9 @@ meaning to the tool — `sha256sum -c` reads any filename. What matters is that
 the digest is paired with the asset name in the file *content*. On Windows:
 
 ```powershell
-Get-FileHash .\ExplorerF11-1.0.4-win64.exe -Algorithm SHA256
-(Get-Item .\ExplorerF11-1.0.4-win64.exe).VersionInfo.FileVersion   # 1.0.4.0
-.\ExplorerF11-1.0.4-win64.exe --version                            # ExplorerF11 1.0.4
+Get-FileHash .\ExplorerF11-1.0.5-win64.exe -Algorithm SHA256
+(Get-Item .\ExplorerF11-1.0.5-win64.exe).VersionInfo.FileVersion   # 1.0.5.0
+.\ExplorerF11-1.0.5-win64.exe --version                            # ExplorerF11 1.0.5
 ```
 
 With Git Bash or a GNU userland, verify the whole manifest instead:
@@ -96,7 +96,7 @@ sha256sum -c SHA256SUMS.txt
 The import table can be checked independently:
 
 ```powershell
-dumpbin /imports .\ExplorerF11-1.0.4-win64.exe | Select-String "\.dll"
+dumpbin /imports .\ExplorerF11-1.0.5-win64.exe | Select-String "\.dll"
 ```
 
 The binary is **not code-signed**, so SmartScreen warns on first run. That is

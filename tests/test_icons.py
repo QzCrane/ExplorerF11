@@ -119,36 +119,39 @@ check("两个图标尺寸集合一致",
       ico_sizes(os.path.join(SRC, "ExplorerF11.ico")),
       ico_sizes(os.path.join(SRC, "ExplorerF11-paused.ico")))
 
-print("\n==== 4. 托盘图标：不是系统自带文件夹 ====")
+print("\n==== 4. 托盘图标来自自身资源（白盒：外壳不提供读回接口）====")
+# Sections 1-3 read the binary. From here on the guarantee lives in code that
+# has no external observer: the shell offers no way to ask which icon or tooltip
+# a tray icon is showing, and no way to count the round trips that put them
+# there. So these assert a *property* of the implementation - a forbidden
+# pattern, a call-site count - and each is labelled with what would be needed to
+# observe it for real.
 main_cpp = open(os.path.join(SRC, "main.cpp"), encoding="utf-8").read()
-check_true("不再借用 SIID_FOLDER", "SIID_FOLDER" not in main_cpp)
-check_true("从自身资源加载图标",
-           "LoadImageW" in main_cpp and "MAKEINTRESOURCEW" in main_cpp)
-check_true("按系统小图标尺寸加载（缩放屏不糊）",
-           "SM_CXSMICON" in main_cpp and "SM_CXICON" in main_cpp)
-check_true("暂停时换成灰色图标",
+check_true("不再借用系统文件夹图标（SIID_FOLDER）", "SIID_FOLDER" not in main_cpp)
+check_true("从自身资源按系统图标尺寸加载（缩放屏不糊）",
+           "LoadImageW" in main_cpp and "MAKEINTRESOURCEW" in main_cpp
+           and "SM_CXSMICON" in main_cpp and "SM_CXICON" in main_cpp)
+check_true("暂停时换成灰色图标（由唯一的状态函数选择）",
            "g_iconPaused" in main_cpp and "TrayIconForState" in main_cpp)
 
-print("\n==== 5. 工具提示：内容源唯一，且会被推送 ====")
+print("\n==== 5. 工具提示：内容源唯一，且会被推送（白盒，同上）====")
 check_true("使用 NOTIFYICON_VERSION_4", "NOTIFYICON_VERSION_4" in main_cpp)
 check_true("注册 NIF_SHOWTIP", "NIF_SHOWTIP" in main_cpp)
 check_true("悬停将弹出时重建提示",
-           re.search(r"NIN_POPUPOPEN\)\s*\{[^}]*UpdateTrayTip\(\)", main_cpp, re.S) is not None,
-           "")
+           re.search(r"NIN_POPUPOPEN\)\s*\{[^}]*UpdateTrayTip\(\)", main_cpp, re.S) is not None)
+# Every state change goes through one function; if a second entry point is added,
+# one surface will eventually be updated and another missed. The count is the
+# property, the exact call sites are not.
 check_true("状态变化统一走 OnStateChanged",
            main_cpp.count("OnStateChanged();") >= 6,
            str(main_cpp.count("OnStateChanged();")))
 # The only direct calls must be the two builders and the popup-open refresh.
 direct = len(re.findall(r"(?<!void )UpdateTrayTip\(\);", main_cpp))
 check_true("没有绕过统一入口的零散刷新", direct <= 3, str(direct))
-check_true("窗口创建后刷新提示", "OnStateChanged();   // one more window" in main_cpp)
-check_true("窗口销毁后刷新提示", "IsMarked(gone)) OnStateChanged();" in main_cpp)
-check_true("资源管理器重启后重新挂回托盘",
-           "TaskbarCreated" in main_cpp and "AddTray(h);" in main_cpp)
 
 print("\n==== 6. 报告窗口带图标 ====")
-check_true("WM_SETICON 同时设大小图标",
-           "WM_SETICON, ICON_BIG" in main_cpp and "WM_SETICON, ICON_SMALL" in main_cpp)
+# Not asserted here any more: tests/test_smoke.py asks the open report window
+# for its icons with WM_GETICON, which is the shell's own answer.
 
 bad = [r for r in results if not r[0]]
 print("\n%s  %d/%d 通过" % ("ALL PASS" if not bad else "FAILURES",

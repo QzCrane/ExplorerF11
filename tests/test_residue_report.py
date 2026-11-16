@@ -43,6 +43,7 @@ RUN = r"Software\Microsoft\Windows\CurrentVersion\Run"
 APPROVED = r"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run"
 TRAY = r"Control Panel\NotifyIconSettings"
 COMPAT = r"Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Compatibility Assistant\Store"
+USERASSIST = r"Software\Microsoft\Windows\CurrentVersion\Explorer\UserAssist"
 
 IDM_STATUS = 1010
 IDM_LANG_EN = 1012
@@ -555,6 +556,74 @@ kill()
 check("状态仍与测试前一致", state(), before)
 u.DestroyWindow(probe_child)
 u.DestroyWindow(probe_parent)
+
+print("\n==== 9. UserAssist 的 ROT13 值名能被认出来（行为断言）====")
+# This row exists to find launch history for this exe, and it can only do that
+# if it undoes the storage convention: UserAssist writes the value NAME as
+# ROT13(path). Get that wrong and the row reads "absent" on a machine where
+# Explorer has launched the exe hundreds of times - a false negative in the one
+# place the product claims to be thorough. Nothing in the report reveals the
+# rotation, so the test plants an entry shaped the way Windows shapes it (ROT13
+# name, binary count blob) in a GUID of its own and requires the count to rise
+# by exactly one. A second, unrelated ROT13 name proves the rule is "contains
+# our exe", not "counts any value".
+UA_KEY = USERASSIST + r"\{EF11TEST-0000-0000-0000-000000000000}\Count"
+
+
+def rot13(text):
+    out = []
+    for ch in text:
+        if "a" <= ch <= "z":
+            out.append(chr((ord(ch) - 97 + 13) % 26 + 97))
+        elif "A" <= ch <= "Z":
+            out.append(chr((ord(ch) - 65 + 13) % 26 + 65))
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
+def ua_entries():
+    """How many UserAssist values the report names, from the report itself."""
+    code, out = run_status(("--lang", "en"))
+    lines = out.splitlines()
+    i = next((n for n, l in enumerate(lines) if "Launch counter (UserAssist)" in l), None)
+    if i is None:
+        return None
+    for line in lines[i:i + 6]:
+        if line.strip().startswith("what:"):
+            return line.count("{")
+    return 0
+
+
+def ua_plant(names):
+    with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, UA_KEY, 0,
+                            winreg.KEY_SET_VALUE) as k:
+        for name in names:
+            winreg.SetValueEx(k, name, 0, winreg.REG_BINARY, b"\x00" * 72)
+
+
+def ua_drop():
+    try:
+        winreg.DeleteKey(winreg.HKEY_CURRENT_USER, UA_KEY)
+    except OSError:
+        pass
+    try:
+        winreg.DeleteKey(winreg.HKEY_CURRENT_USER, UA_KEY[:-len(r"\Count")])
+    except OSError:
+        pass
+
+
+NAME_OURS = rot13(r"C:\Tools\ExplorerF11.exe")
+NAME_OTHER = rot13(r"C:\Windows\notepad.exe")
+ua_drop()
+ua0 = ua_entries()
+check_true("报告里能找到 UserAssist 行", ua0 is not None, ua0)
+ua_plant([NAME_OTHER])
+check("只有别人的 ROT13 值名时不计入", ua_entries(), ua0)
+ua_plant([NAME_OTHER, NAME_OURS])
+check("值名是 ROT13(路径) 也能认出我们这条", ua_entries(), ua0 + 1)
+ua_drop()
+check("移除后回到原来的数量", ua_entries(), ua0)
 
 bad = [r for r in results if not r[0]]
 print("\n%s  %d/%d 通过" % ("ALL PASS" if not bad else "FAILURES",
