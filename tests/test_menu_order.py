@@ -182,17 +182,24 @@ check_true("没有残留旧文案",
                    for r in rest))
 
 print("\n==== 4. 五种语言：同样结构、勾选正确、正文随语言切换 ====")
-for lang, checked, status_marker, report_prefix, exit_row in (
-    ("en", "English", "accelerated", "[ ] Residue report (", "[ ] Exit"),
-    ("zh-Hant", "繁體中文", "個視窗", "[ ] 殘留報告（", "[ ] 結束"),
-    ("ja", "日本語", "ウィンドウを高速化", "[ ] 残留レポート（", "[ ] 終了"),
-    ("ko", "한국어", "가속됨", "[ ] 잔여물 보고서 (", "[ ] 종료"),
+# 状态行有三种形态：等待窗口、已加速 N 个窗口、已暂停。哪一种是当前状态取决于
+# 这台机器上有没有文件夹窗口 —— CI 上没有，开发机上通常有 —— 所以每种语言接受
+# 该语言的全部合法形态，而不是假定其中一个。
+for lang, checked, status_markers, report_prefix, exit_row in (
+    ("en", "English", ("accelerated", "waiting for a folder window"),
+     "[ ] Residue report (", "[ ] Exit"),
+    ("zh-Hant", "繁體中文", ("個視窗", "等待資料夾視窗"),
+     "[ ] 殘留報告（", "[ ] 結束"),
+    ("ja", "日本語", ("ウィンドウを高速化", "待機中"),
+     "[ ] 残留レポート（", "[ ] 終了"),
+    ("ko", "한국어", ("가속됨", "대기 중"),
+     "[ ] 잔여물 보고서 (", "[ ] 종료"),
 ):
     code_l, rows_l = menu(lang)
     check("%s 菜单退出码 = 0" % lang, code_l, 0)
     check("%s 菜单行数一致" % lang, len(rows_l), len(rows))
     check_true("%s 状态行已本地化" % lang,
-               status_marker in rows_l[0], rows_l[0])
+               any(m in rows_l[0] for m in status_markers), rows_l[0])
     checked_langs = [r.strip()[4:] for r in rows_l if r.startswith("    [✓] ")]
     check("%s 语言单选唯一且正确" % lang, checked_langs, [checked])
     check_true("%s 残留报告项" % lang,
