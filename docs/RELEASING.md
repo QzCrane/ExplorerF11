@@ -118,6 +118,11 @@ The workflow listens on `push` to `main` only, so pushing a tag does not start a
 second run. The main-branch run on the tagged commit is the gate: confirm it is
 green before publishing the release itself.
 
+`gh release create` takes each asset's name from the local file's basename; it
+has no display-name override. Copy the exe to the final asset name before
+uploading, or the checksum and the docs will point at a file that does not exist
+on the release page.
+
 Name the asset `ExplorerF11-<version>-win64.exe` and attach a `SHA256SUMS.txt`
 containing:
 
