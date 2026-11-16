@@ -114,8 +114,9 @@ git push origin vX.Y.Z
 ```
 
 The tag is `v` plus the SemVer number; the release title is `ExplorerF11 X.Y.Z`.
-The tag push triggers a second CI run — confirm that one is green before
-publishing the release itself.
+The workflow listens on `push` to `main` only, so pushing a tag does not start a
+second run. The main-branch run on the tagged commit is the gate: confirm it is
+green before publishing the release itself.
 
 Name the asset `ExplorerF11-<version>-win64.exe` and attach a `SHA256SUMS.txt`
 containing:
