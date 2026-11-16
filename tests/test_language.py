@@ -32,8 +32,11 @@ import time
 import winreg
 from ctypes import wintypes
 
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
+sys.path.insert(0, os.path.join(ROOT, "tools"))
+import win32util as winutil      # noqa: E402  shared stop/start/wait
 EXE = os.path.join(ROOT, "dist", "ExplorerF11.exe")
 
 CFG = r"Software\ExplorerF11"
@@ -117,25 +120,26 @@ def check_true(name, cond, detail=""):
 
 
 def kill():
-    subprocess.run(["taskkill", "/F", "/IM", "ExplorerF11.exe"], capture_output=True)
-    time.sleep(0.5)
+    winutil.terminate()
 
 
 def start(*args):
-    subprocess.Popen([EXE] + list(args), cwd=os.path.dirname(EXE), env=CLEAN_ENV)
-    time.sleep(1.3)
+    winutil.launch(EXE, args, env=CLEAN_ENV)
 
 
 def hwnd():
     return u.FindWindowW("ExplorerF11Window", None)
 
 
-def post(cmd):
+def post(cmd, until=None):
+    """Post a menu command and, when the caller knows the expected state, wait
+    for it instead of sleeping 0.8 s per command."""
     h = hwnd()
     if not h:
         return False
     u.PostMessageW(h, 0x0111, cmd, 0)
-    time.sleep(0.8)
+    if until is not None:
+        return winutil.wait_until(until, timeout=5.0)
     return True
 
 
@@ -245,7 +249,7 @@ check("隐藏窗口存在", bool(hwnd()), True)
 check("启动时不写 Language", read_lang(), None)
 check("进程内菜单是系统语言", checked_language(menu()), sys_tag)
 
-check("发出切换指令", post(other_id), True)
+check("发出切换指令", post(other_id, until=lambda: read_lang() == other_tag), True)
 check("切换到非系统语言后写入值", read_lang(), other_tag)
 rows = menu()                                   # 新进程，读的是存储值
 check("重启后仍是刚才选的语言", checked_language(rows), other_tag)
@@ -261,7 +265,7 @@ out_env = subprocess.run([EXE, "--status"], capture_output=True, timeout=25,
 check("环境变量也覆盖存储值", report_language(out_env.decode("utf-8", "replace")), sys_tag)
 
 print("\n==== 4. 切回系统语言 -> 删除存储值（不留配置）====")
-check("仍在上一步的实例里切换", post(sys_id), True)
+check("仍在上一步的实例里切换", post(sys_id, until=lambda: read_lang() is None), True)
 check("选回系统语言后值被删除", read_lang(), None)
 check("配置键随之消失", cfg_exists(), False)
 check("菜单显示系统语言", checked_language(menu()), sys_tag)
@@ -269,7 +273,7 @@ kill()
 
 print("\n==== 5. 已打开的残留窗口跟随切换 ====")
 start()
-post(IDM_STATUS)
+post(IDM_STATUS, until=lambda: u.FindWindowW("ExplorerF11StatusWindow", None))
 win = u.FindWindowW("ExplorerF11StatusWindow", None)
 check("残留窗口已打开", bool(win), True)
 if win:
@@ -295,7 +299,10 @@ if win:
     # Every language must repaint an already-open window: header, title and all
     # three buttons. This is the regression guard for the half-translated panel.
     for tag in TAGS:
-        check("发出切换到 %s 的指令" % tag, post(IDM_LANG[tag]), True)
+        check("发出切换到 %s 的指令" % tag,
+              post(IDM_LANG[tag],
+                   until=lambda t=tag: report_language(
+                       body().replace("\r\n", "\n")) == t), True)
         check("%s 窗口正文已跟随切换" % tag,
               report_language(body().replace("\r\n", "\n")), tag)
         check_true("%s 窗口标题已跟随切换" % tag,
@@ -305,11 +312,11 @@ if win:
         check("%s 关闭按钮已跟随切换" % tag, ctrl_text(2004), CLOSE_TOKEN[tag])
 
     # Return to the system language so the stored value is removed again.
-    post(sys_id)
+    post(sys_id, until=lambda: report_language(body().replace("\r\n", "\n")) == sys_tag)
     check("窗口正文已回到系统语言",
           report_language(body().replace("\r\n", "\n")), sys_tag)
     u.PostMessageW(win, 0x0010, 0, 0)
-    time.sleep(0.4)
+    winutil.wait_until(lambda: not u.IsWindow(win), timeout=5.0)
 kill()
 
 print("\n==== 6. 还原 ====")

@@ -15,10 +15,15 @@ import os
 import re
 import subprocess
 import sys
+import time
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import treefp  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FACTS = os.path.join(ROOT, "tools", "release_facts.py")
 MANIFEST = os.path.join(ROOT, "tools", "measurement.json")
+GATE_RECORD = os.path.join(ROOT, "dist", "gates.json")
 
 
 def read(path):
@@ -67,20 +72,27 @@ def main():
     # Run every gate individually: one red gate invalidates the whole refresh.
     counts = {}
     smoke_output = ""
+    runs = []
+    suite_started = time.time()
     for command in commands:
         # The facts gate compares docs against the facts file. Running it here
         # would compare against the *previous* snapshot, so defer it until the
         # new facts have been written (see the verification step below).
         if command.endswith("tools/check_release_facts.py"):
             continue
+        t0 = time.time()
         proc = subprocess.run(["python"] + command.split(), cwd=ROOT, text=True,
                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        seconds = time.time() - t0
         print("$ %s" % command)
         print(proc.stdout[-1200:])
         if proc.returncode:
             raise SystemExit("refresh_facts: %s failed; facts not changed" % command)
+        entry = {"command": command, "seconds": round(seconds, 2)}
         if command.startswith("tests/"):
             counts[command] = assertion_total(proc.stdout, command)
+            entry["assertions"] = counts[command]
+        runs.append(entry)
         if command.endswith("test_smoke.py"):
             smoke_output = proc.stdout
 
@@ -120,17 +132,34 @@ def main():
     write(MANIFEST, json.dumps(manifest, indent=2, sort_keys=True) + "\n")
 
     # Now that facts and manifest agree, the consistency gate can validate them.
+    t0 = time.time()
     verify = subprocess.run(["python", "tools/check_release_facts.py"], cwd=ROOT,
                             text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    runs.append({"command": "tools/check_release_facts.py",
+                 "seconds": round(time.time() - t0, 2)})
     tail = "\n".join(verify.stdout.strip().splitlines()[-8:])
     print("$ python tools/check_release_facts.py\n" + tail)
     if verify.returncode:
         raise SystemExit("refresh_facts: consistency gate failed; see output above")
 
+    # Record what was proven, and against which bytes. The release pipeline's
+    # `gates` stage used to run these same thirteen commands a second time; it
+    # now compares this fingerprint instead. `make clean` deletes the record,
+    # which is the safe direction: no record means the suite runs again.
+    elapsed = time.time() - suite_started
+    write(GATE_RECORD, json.dumps({
+        "version": version,
+        "fingerprint": treefp.fingerprint(),
+        "gates": runs,
+        "assertions_total": total,
+        "seconds": round(elapsed, 1),
+        "generated": time.strftime("%Y-%m-%dT%H:%M:%S"),
+    }, indent=2) + "\n")
+
     print("release_facts: v%s, %d gates (%d static + %d suites), %d assertions, "
-          "%d KiB, %s MB / %s handles / %s threads" %
+          "%d KiB, %s MB / %s handles / %s threads, %.1fs" %
           (version, len(commands), len(commands) - len(suites), len(suites), total,
-           size_kib, measured.group(1), measured.group(3), measured.group(2)))
+           size_kib, measured.group(1), measured.group(3), measured.group(2), elapsed))
 
 
 if __name__ == "__main__":

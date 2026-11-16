@@ -29,10 +29,13 @@ import subprocess
 import sys
 import time
 import winreg
+
 from ctypes import wintypes
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
+sys.path.insert(0, os.path.join(ROOT, "tools"))
+import win32util as winutil      # noqa: E402  shared stop/start/wait
 EXE = os.path.join(ROOT, "dist", "ExplorerF11.exe")
 
 CFG = r"Software\ExplorerF11"
@@ -73,13 +76,11 @@ def check_true(name, cond, detail=""):
 
 
 def kill():
-    subprocess.run(["taskkill", "/F", "/IM", "ExplorerF11.exe"], capture_output=True)
-    time.sleep(0.5)
+    winutil.terminate()
 
 
 def start(*args):
-    subprocess.Popen([EXE] + list(args), cwd=os.path.dirname(EXE))
-    time.sleep(1.4)
+    winutil.launch(EXE, args)
 
 
 class WNDCLASS(ctypes.Structure):
@@ -167,8 +168,22 @@ def post_cmd(cmd_id):
     if not h:
         return False
     u.PostMessageW(h, 0x0111, cmd_id, 0)   # WM_COMMAND
-    time.sleep(0.7)
-    return True
+    return winutil.wait_until(
+        lambda: hwnd("ExplorerF11StatusWindow")
+        and u.IsWindowVisible(hwnd("ExplorerF11StatusWindow")), timeout=5.0)
+
+
+def next_second():
+    """Wait for the wall clock to leave the current second.
+
+    The report body stamps the time it was built, at one-second resolution, so
+    a rebuild inside the same second produces byte-identical text. That is a
+    limit of the observable, not of the refresh: crossing the boundary first
+    makes the next rebuild visible, instead of sleeping 1.2 s and hoping it
+    landed on the other side.
+    """
+    started = int(time.time())
+    winutil.wait_until(lambda: int(time.time()) != started, timeout=1.1)
 
 
 def run_status(extra=(), env=ENV):
@@ -433,13 +448,13 @@ if win:
     check_true("标题正确", "残留报告" in window_text(win), window_text(win))
 
     u.PostMessageW(win, 0x0111, 2002, 0)   # IDC_STATUS_COPY
-    time.sleep(0.5)
+    winutil.wait_until(lambda: clipboard_text().startswith("ExplorerF11 "), timeout=5.0)
     clip = clipboard_text()
     check_true("「复制全部」把报告放进剪贴板", clip.startswith("ExplorerF11 "), str(len(clip)))
 
     print("\n==== 6. 语言切换即时作用于已打开的窗口 ====")
     u.PostMessageW(hwnd("ExplorerF11Window"), 0x0111, IDM_LANG_EN, 0)
-    time.sleep(0.9)
+    winutil.wait_until(lambda: "residue report" in read_edit(win), timeout=5.0)
     text_en = read_edit(win).replace("\r\n", "\n")
     check_true("窗口正文已变成英文",
                text_en.startswith("ExplorerF11 ") and "residue report" in text_en)
@@ -448,7 +463,7 @@ if win:
     check_true("按钮已本地化（Copy all）", dlg_text(win, 2002) == "Copy all",
                dlg_text(win, 2002))
     u.PostMessageW(hwnd("ExplorerF11Window"), 0x0111, 1011, 0)   # IDM_LANG_ZH
-    time.sleep(0.9)
+    winutil.wait_until(lambda: "残留报告" in read_edit(win), timeout=5.0)
     check_true("窗口正文已回到中文", "残留报告" in read_edit(win))
     check_true("按钮已回到中文（复制全部）", dlg_text(win, 2002) == "复制全部",
                dlg_text(win, 2002))
@@ -465,34 +480,36 @@ if win:
 
     before_state = state()
     u.PostMessageW(win, 0x0111, IDC_STATUS_CLEAN, 0)   # click the clean button
-    dlg = None
-    for _ in range(30):
-        time.sleep(0.1)
-        dlg = confirm_box()
-        if dlg:
-            break
+    winutil.wait_until(confirm_box, timeout=3.0)
+    dlg = confirm_box()
     check_true("清理前弹出确认框", bool(dlg), str(dlg))
     if dlg:
         u.PostMessageW(dlg, 0x0111, 7, 0)   # IDNO = cancel
-        time.sleep(0.8)
+        winutil.wait_until(lambda: not u.IsWindow(dlg), timeout=5.0)
         check_true("取消后什么都没删", state() == before_state, str(state()))
         check_true("取消后报告窗口还在", bool(hwnd("ExplorerF11StatusWindow")), "")
 
     print("\n==== 8. 已打开的报告跟随状态实时刷新 ====")
     before_body = read_edit(win)
+    # The body stamps the time it was built, at one-second resolution, so a
+    # rebuild inside the same second is byte-identical to the body it replaced.
+    # Crossing the boundary before the command costs at most half a second and
+    # makes the rebuild observable at all; the poll then returns in milliseconds.
+    next_second()
     u.PostMessageW(hwnd("ExplorerF11Window"), 0x0111, 1002, 0)   # IDM_PAUSE
-    time.sleep(1.2)
+    winutil.wait_until(lambda: read_edit(win) != before_body, timeout=2.0)
     after_body = read_edit(win)
     check_true("暂停后窗口内容当场重建", after_body != before_body,
                "%d -> %d bytes" % (len(before_body), len(after_body)))
     check_true("重建后仍是同一份报告", after_body.startswith("ExplorerF11 ") and
                after_body.count("谁写：") == before_body.count("谁写："), "")
+    next_second()
     u.PostMessageW(hwnd("ExplorerF11Window"), 0x0111, 1002, 0)   # IDM_PAUSE (resume)
-    time.sleep(1.2)
+    winutil.wait_until(lambda: read_edit(win) != after_body, timeout=2.0)
     check_true("恢复后再次重建", read_edit(win) != after_body, "")
 
     u.PostMessageW(win, 0x0010, 0, 0)   # WM_CLOSE
-    time.sleep(0.5)
+    winutil.wait_until(lambda: not hwnd("ExplorerF11StatusWindow"), timeout=5.0)
     check("窗口已关闭", bool(hwnd("ExplorerF11StatusWindow")), False)
 
 print("\n==== 8. 退出后状态不变 ====")

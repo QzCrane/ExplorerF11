@@ -31,7 +31,7 @@ Four details define what the tool is:
 
 - **No polling.** A shell hook reports top-level window creation; a WinEvent hook
   reports tab creation and restore-from-minimised. Idle time is spent blocked in
-  `GetMessageW`: 1.77 MB private, 129 handles, 0.03 s cumulative CPU over two
+  `GetMessageW`: 1.76-1.77 MB private, 129 handles, 0.03 s cumulative CPU over two
   minutes on the test machine.
 - **No injection, no focus theft.** `PostMessageW` delivers key messages without
   touching the foreground window or the real keyboard state. There is no DLL

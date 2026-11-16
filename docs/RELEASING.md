@@ -27,6 +27,14 @@ typed — and commits it before the tag, so the tagged tree contains the text th
 release page shows. `remote` compares all four GitHub-only surfaces against
 `release_facts.py` with `tools/check_github_sync.py`.
 
+`gates` does not run anything of its own. `facts` has to run all thirteen
+commands already, because it derives the assertion count from them, and it
+records the fingerprint of the tree it ran against (`tools/treefp.py`). The
+`gates` stage recomputes that fingerprint and reuses the run when it matches;
+anything that changes a byte — including a regenerated screenshot — invalidates
+it and the suite runs again. Same bytes, same questions, same answer; running
+it twice only made the pipeline slower.
+
 The rest of this document is why each stage exists and what it refuses to
 accept. Read it before changing the script.
 
@@ -109,6 +117,19 @@ thirteen gates in this order:
 | `tests/test_tray_cleanup.py` | `--clean` removes this program's records and nothing else |
 | `tests/test_smoke.py` | event path end to end on a real Explorer window, resource ceilings |
 | `tests/test_robustness.py` | source contracts for the event-driven fixes; behavioural CLI checks |
+
+`make refresh-facts` runs this same list, one command at a time, and records the
+result with a fingerprint of the tree; `make test` runs it as one list. They
+share the Makefile recipe, so the two can never disagree about what the gates
+are. Run `make test` when you want to see it; the release pipeline only needs the
+record.
+
+The suites wait for observations, never for a stopwatch: the process handle
+signals exit, the window appears, the menu command's effect is visible in the
+registry, the report's body carries a new timestamp. `tools/win32util.py` holds
+those primitives. A suite that needs a sleep has found a state it cannot
+observe, and that is worth fixing rather than papering over — the fixed sleeps
+were 46 of the suite's original 62 s.
 
 Four are static checks; nine drive the built exe, so build first.
 `test_smoke.py` opens and closes a real folder window and needs a desktop

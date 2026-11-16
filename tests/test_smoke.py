@@ -26,8 +26,11 @@ import sys
 import time
 from ctypes import wintypes
 
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
+sys.path.insert(0, os.path.join(ROOT, "tools"))
+import win32util as winutil      # noqa: E402  shared stop/start/wait
 EXE = os.path.join(ROOT, "dist", "ExplorerF11.exe")
 LOG = os.path.join(os.environ["TEMP"], "ExplorerF11.log")
 TARGET = r"C:\Windows\System32\drivers"
@@ -82,14 +85,17 @@ def folder_windows():
 if os.path.exists(LOG):
     os.remove(LOG)
 
-subprocess.run(["taskkill", "/F", "/IM", "ExplorerF11.exe"], capture_output=True)
-time.sleep(0.5)
-subprocess.Popen([EXE, "--log"], cwd=os.path.dirname(EXE))
-time.sleep(1.5)
+winutil.terminate()
+app = winutil.launch(EXE, ["--log"])
 
 print("1) 打开资源管理器窗口")
 subprocess.Popen("explorer.exe " + TARGET, shell=True)
-time.sleep(2.5)
+# Wait for the thing being tested, not for a stopwatch: a new CabinetWClass
+# window, and a log line saying the app acted on it. The fixed 2.5 s was long
+# enough for the window and short enough to fail when Explorer was slow.
+winutil.wait_until(lambda: "accelerated:" in
+                   (open(LOG, encoding="utf-8-sig").read() if os.path.exists(LOG) else ""),
+                   timeout=15.0)
 wins = folder_windows()
 for h, t, cap in wins:
     print("   hwnd=0x%08X caption=%-5s %r" % (h, cap, t))
@@ -102,32 +108,33 @@ check_true("Shell 钩子注册成功", "started (tab hook ok)" in log)
 check_true("确实加速了一个窗口", "accelerated:" in log, log.splitlines()[-1] if log else "")
 
 print("\n3) 资源")
-p = subprocess.run(["powershell", "-NoProfile", "-Command",
-                    "$p=Get-Process -Name ExplorerF11 -EA SilentlyContinue;"
-                    "if($p){'{0}|{1}|{2}' -f "
-                    "[math]::Round($p.PrivateMemorySize64/1MB,2),$p.Threads.Count,$p.HandleCount}"],
-                   capture_output=True, text=True)
-mb, threads, handles = (p.stdout.strip().split("|") + ["", "", ""])[:3]
-print("   private=%s MB   threads=%s   handles=%s" % (mb, threads, handles))
-check_true("私有内存低于上限", mb and float(mb) < MAX_PRIVATE_MB, mb)
-check_true("句柄数低于上限", handles and int(handles) < MAX_HANDLES, handles)
-check_true("只有一个空闲线程组", threads and int(threads) <= 8, threads)
+# Same three numbers, read from the process instead of from a shell: the
+# PowerShell query cost 1.1 s of a 7 s suite and could fail for reasons that
+# have nothing to do with the binary.
+private_mb, threads, handles = winutil.stats(app.pid)
+mb = "%.2f" % private_mb
+print("   private=%s MB   threads=%d   handles=%d" % (mb, threads, handles))
+check_true("私有内存低于上限", private_mb < MAX_PRIVATE_MB, mb)
+check_true("句柄数低于上限", handles < MAX_HANDLES, handles)
+check_true("只有一个空闲线程组", threads <= 8, threads)
 
 # Leave the desktop as we found it: close only the window this test opened,
 # stop the instance, drop the log. A test that leaves state behind is a bug.
 print("\n4) 收尾")
 closed = 0
+closed_hwnds = []
 for h, t, cap in wins:
     cls = ctypes.create_unicode_buffer(64)
     u.GetClassNameW(h, cls, 64)
     if cls.value == "CabinetWClass" and "drivers" in t.lower():
         u.PostMessageW(h, 0x0010, 0, 0)      # WM_CLOSE
         closed += 1
-time.sleep(0.8)
+        closed_hwnds.append(h)
 print("   关闭测试打开的窗口: %d" % closed)
 check("关闭了测试打开的窗口", closed, 1)
-subprocess.run(["taskkill", "/F", "/IM", "ExplorerF11.exe"], capture_output=True)
-time.sleep(0.3)
+# Only the window this test opened: other Explorer windows are the user's.
+winutil.wait_until(lambda: not any(u.IsWindow(h) for h in closed_hwnds), timeout=10.0)
+winutil.terminate()
 if os.path.exists(LOG):
     os.remove(LOG)
 print("   结束实例并删除日志")

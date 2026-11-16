@@ -24,6 +24,8 @@ from PIL import ImageGrab
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
+sys.path.insert(0, HERE)
+import win32util as winutil      # noqa: E402  shared stop/start/wait
 EXE = os.path.join(ROOT, "dist", "ExplorerF11.exe")
 OUT = os.path.join(ROOT, "docs", "images")
 
@@ -46,6 +48,9 @@ u.FindWindowW.restype = wintypes.HWND
 u.PostMessageW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
 u.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
 u.SetCursorPos.argtypes = [ctypes.c_int, ctypes.c_int]
+u.IsWindow.argtypes = [wintypes.HWND]
+u.IsWindowVisible.argtypes = [wintypes.HWND]
+u.GetForegroundWindow.restype = wintypes.HWND
 u.SetWindowPos.argtypes = [wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int,
                            ctypes.c_int, ctypes.c_int, ctypes.c_uint]
 
@@ -62,11 +67,17 @@ except OSError:
 
 
 def raise_window(hwnd):
-    """Screen captures show whatever is on top, so force the window up first."""
+    """Screen captures show whatever is on top, so force the window up first.
+
+    TOPMOST is what makes the capture correct. SetForegroundWindow is best
+    effort - a background process is not allowed to take focus - so waiting for
+    activation would just burn the deadline; the short settle covers the repaint
+    that the Z-order change triggers.
+    """
     u.ShowWindow(hwnd, 9)                                   # SW_RESTORE
     u.SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE)
     u.SetForegroundWindow(hwnd)
-    time.sleep(0.45)
+    time.sleep(0.15)
 
 
 def visible_rect(hwnd):
@@ -107,13 +118,11 @@ def main():
     if not os.path.exists(EXE):
         raise SystemExit("build first: %s is missing" % EXE)
     os.makedirs(OUT, exist_ok=True)
-    subprocess.run(["taskkill", "/F", "/IM", "ExplorerF11.exe"], capture_output=True)
-    time.sleep(0.6)
+    winutil.terminate()
     # TEMP is overridden so the report prints a neutral log path instead of the
     # account name of whoever took the screenshot.
     env = dict(os.environ, TEMP=r"C:\Temp", TMP=r"C:\Temp")
-    subprocess.Popen([EXE, "--lang", LANG], cwd=os.path.dirname(EXE), env=env)
-    time.sleep(1.6)
+    winutil.launch(EXE, ["--lang", LANG], env=env)
 
     hidden = u.FindWindowW("ExplorerF11Window", None)
     if not hidden:
@@ -124,12 +133,16 @@ def main():
     report = wait_window("ExplorerF11StatusWindow")
     if not report:
         raise SystemExit("report window did not open")
-    time.sleep(0.7)                      # let the edit control paint the body
+    # The body is filled during WM_CREATE, before the window is shown, so
+    # visibility already implies content; this short settle is only for the
+    # first paint, which has no observable of its own.
+    winutil.wait_until(lambda: u.IsWindowVisible(report), timeout=5.0)
+    time.sleep(0.15)
     raise_window(report)
     grab(report, os.path.join(OUT, "residue-report" + SUFFIX + ".png"))
     u.SetWindowPos(report, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE)
     u.PostMessageW(report, WM_CLOSE, 0, 0)
-    time.sleep(0.4)
+    winutil.wait_until(lambda: not u.IsWindow(report), timeout=5.0)
 
     print("tray menu")
     u.SetCursorPos(520, 240)             # room below and to the right of the menu
@@ -137,12 +150,15 @@ def main():
     menu = wait_window("#32768")         # the class Windows uses for popup menus
     if not menu:
         raise SystemExit("the menu window did not appear")
-    time.sleep(0.5)
+    winutil.wait_until(lambda: u.IsWindowVisible(menu), timeout=5.0)
+    time.sleep(0.15)                     # first paint of a popup menu
     grab(menu, os.path.join(OUT, "tray-menu" + SUFFIX + ".png"), MENU_MARGIN)
     u.keybd_event(VK_ESCAPE, 0, 0, 0)    # dismiss; TrackPopupMenu is waiting for it
     u.keybd_event(VK_ESCAPE, 0, 2, 0)
-    time.sleep(0.3)
-    subprocess.run(["taskkill", "/F", "/IM", "ExplorerF11.exe"], capture_output=True)
+    # The menu belongs to the app's thread, which is inside TrackPopupMenu, so
+    # stopping the process is the reliable dismissal - and it has to happen
+    # before the next language starts anyway.
+    winutil.terminate()
 
 
 if __name__ == "__main__":

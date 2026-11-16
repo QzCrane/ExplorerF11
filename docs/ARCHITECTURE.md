@@ -285,7 +285,7 @@ shortly after start-up:
 
 | | Measured | Notes |
 |---|---|---|
-| Private bytes | 1.77 MB | of which 1.55 MB is what an empty program built with these flags commits; no heap growth after start-up (300 passes of every reader leave the handle count flat) |
+| Private bytes | 1.76-1.77 MB | of which 1.55 MB is what an empty program built with these flags commits; no heap growth after start-up (300 passes of every reader leave the handle count flat) |
 | Handles | 129 | window, hooks, tray icon, mutex and thread pool |
 | Threads | 4 transient, 1 settled | three `TpWorkerFactory` helpers exit after roughly 45 s idle |
 | CPU | 0.03 s cumulative / 2 min | start-up cost; steady state is blocked in `GetMessageW` |

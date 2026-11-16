@@ -48,6 +48,7 @@ import time
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 import release_facts as F  # noqa: E402
+import treefp  # noqa: E402
 
 STAGES = (
     "preflight",   # checkout, version, notes source, tag absence, gh auth
@@ -369,14 +370,36 @@ def stage_facts(cfg):
          % (F.SIZE_KIB, F.HANDLES, F.ASSERTIONS,
             " (rewritten)" if changed else " (unchanged)"))
     if changed:
-        note("release_facts.py changed; the gates in the next stage decide "
-             "whether the prose still agrees")
+        note("release_facts.py changed; the consistency gate in the same run "
+             "compared the prose against the new numbers")
 
 
 def stage_gates(cfg):
-    """The full suite, on the tree that will be tagged."""
+    """The full suite, on the tree that will be tagged.
+
+    `facts` has already run every one of these commands - it has to, because it
+    derives the assertion count from them - and it recorded the fingerprint of
+    the tree it ran against. If that fingerprint still describes this tree, the
+    answer cannot change: same bytes, same questions, same result. Re-running
+    cost 62 s and proved nothing new.
+
+    Anything that moves a byte invalidates the record, including the four
+    documentation screenshots, so this is a strict reuse and not a shortcut.
+    """
+    record = read_gate_record()
+    here = treefp.fingerprint()
+    if record and record.get("fingerprint") == here:
+        note("gates: %d commands, %d assertions, all green on this exact tree "
+             "(recorded by `facts` in %.1fs)"
+             % (len(record.get("gates", [])), record.get("assertions_total", 0),
+                record.get("seconds", 0.0)))
+        return
+    why = ("no gate record in dist/" if not record else
+           "the tree changed since `facts` ran")
+    note("re-running the suite: " + why)
+    started = time.time()
     run(["make", "test"], timeout=1800)
-    note("thirteen gates passed on this tree")
+    note("thirteen gates passed on this tree in %.1fs" % (time.time() - started))
 
 
 def stage_screenshots(cfg):
@@ -686,6 +709,22 @@ def _pe_has_signature(path):
     return size > 0
 
 
+def read_gate_record():
+    """The gate run `refresh-facts` recorded, or None.
+
+    Lives in dist/ because it describes one build of one tree; `make clean`
+    removing it is correct, and the next facts stage writes a fresh one.
+    """
+    try:
+        with open(os.path.join(ROOT, "dist", "gates.json"), encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return None
+    if isinstance(data, dict) and data.get("fingerprint"):
+        return data
+    return None
+
+
 def placeholder_values(cfg):
     return {
         "{{version}}": cfg.version,
@@ -843,6 +882,7 @@ def main(argv=None):
                                    " (dry run)" if cfg.dry_run else ""))
 
     started = time.time()
+    timings = []
     for name in STAGES:
         if args.start and STAGES.index(name) < STAGES.index(args.start):
             continue
@@ -850,36 +890,64 @@ def main(argv=None):
             LOG.head("dry run stopped before publish")
             note("build, facts, gates and notes all passed.")
             note("Nothing was committed, tagged, uploaded or published.")
+            report_timings(timings)
             LOG.flush()
             return 0
         LOG.head("%s" % name)
+        t0 = time.time()
         try:
             HANDLERS[name](cfg)
         except Fail as exc:
+            timings.append((name, time.time() - t0))
             LOG.head("FAILED at " + name)
             note(str(exc))
             note("")
             note("Nothing after this stage ran. Fix the cause, then resume with:")
             note("    python tools/release.py --from %s" % name)
+            report_timings(timings)
             cfg.save()
             LOG.flush()
             return 1
         except subprocess.TimeoutExpired as exc:
+            timings.append((name, time.time() - t0))
             LOG.head("FAILED at " + name)
             note("timed out: %s" % exc)
+            report_timings(timings)
             cfg.save()
             LOG.flush()
             return 1
+        timings.append((name, time.time() - t0))
         cfg.save()
         LOG.flush()
         if args.stop == name:
             note("stopped after %s as requested" % name)
+            report_timings(timings)
             return 0
 
     note("elapsed %.1fs" % (time.time() - started))
+    report_timings(timings)
     note("log " + os.path.relpath(LOG.path, ROOT))
     LOG.flush()
     return 0
+
+
+def report_timings(timings):
+    """Print where the wall clock went.
+
+    A pipeline that only reports its total cannot be argued with: "the release
+    takes four minutes" was true for a year because nothing measured the parts.
+    Printing every stage means the next person can see which one got slower
+    instead of guessing, and `elapsed` is the sum of things that were actually
+    timed rather than a number in a document.
+    """
+    if not timings:
+        return
+    total = sum(seconds for _, seconds in timings)
+    note("stage times, %.1fs in %d stages:" % (total, len(timings)))
+    width = max(len(name) for name, _ in timings)
+    for name, seconds in sorted(timings, key=lambda t: -t[1]):
+        note("    %-*s %6.2fs  %4.1f%%"
+             % (width, name, seconds, 100.0 * seconds / total if total else 0.0))
 
 
 if __name__ == "__main__":

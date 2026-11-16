@@ -31,8 +31,11 @@ import struct
 import subprocess
 import sys
 
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
+sys.path.insert(0, os.path.join(ROOT, "tools"))
+import win32util as winutil      # noqa: E402  shared stop/start/wait
 EXE = os.path.join(ROOT, "dist", "ExplorerF11.exe")
 SRC = os.path.join(ROOT, "src")
 SIZES = [16, 20, 24, 32, 40, 48, 64, 128, 256]
@@ -83,11 +86,13 @@ print("      版本：%s" % version)
 
 
 def version_info(name):
-    # Read through the shell so no extra dependency is needed.
-    p = subprocess.run(["powershell", "-NoProfile", "-Command",
-                        "(Get-Item '%s').VersionInfo.%s" % (EXE, name)],
-                       capture_output=True, timeout=30)
-    return p.stdout.decode("utf-8", "replace").strip()
+    # Eight queries through `powershell -Command` cost 8 s of the suite's 9 s:
+    # each one started a shell to read a resource that is already in the file.
+    # VerQueryValueW reads it directly in about a millisecond.
+    return str(VERSION_INFO.get(name, ""))
+
+
+VERSION_INFO = winutil.file_version(EXE)
 
 
 check("FileVersion 与 --version 一致", version_info("FileVersion"), version + ".0")
@@ -96,9 +101,9 @@ check("ProductVersion 与 --version 一致", version_info("ProductVersion"), ver
 # VS_FIXEDFILEINFO block. 1.0.1 shipped with the block still at 1.0.0.0 because
 # only the strings were bumped. Raw reads that block, so assert it too.
 check("FileVersionRaw 与 --version 一致（二进制版本块）",
-      version_info("FileVersionRaw.ToString()"), version + ".0")
+      version_info("FileVersionRaw"), version + ".0")
 check("ProductVersionRaw 与 --version 一致（二进制版本块）",
-      version_info("ProductVersionRaw.ToString()"), version + ".0")
+      version_info("ProductVersionRaw"), version + ".0")
 check("CompanyName", version_info("CompanyName"), "ExplorerF11")
 check_true("FileDescription 提到 ExplorerF11",
            "ExplorerF11" in version_info("FileDescription"), version_info("FileDescription"))

@@ -18,6 +18,7 @@ if hasattr(_sys.stdout, "reconfigure"):
 import ctypes
 import os
 import subprocess
+
 import sys
 import time
 import winreg
@@ -25,6 +26,8 @@ from ctypes import wintypes
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
+sys.path.insert(0, os.path.join(ROOT, "tools"))
+import win32util as winutil      # noqa: E402  shared stop/start/wait
 EXE = os.path.join(ROOT, "dist", "ExplorerF11.exe")
 CFG = r"Software\ExplorerF11"
 RUN = r"Software\Microsoft\Windows\CurrentVersion\Run"
@@ -50,16 +53,11 @@ def check(name, got, want):
 
 
 def kill():
-    subprocess.run(
-        ["powershell", "-NoProfile", "-Command",
-         "Stop-Process -Name ExplorerF11 -Force -ErrorAction SilentlyContinue"],
-        capture_output=True)
-    time.sleep(0.4)
+    winutil.terminate()
 
 
 def start(*args):
-    subprocess.Popen([EXE] + list(args), cwd=os.path.dirname(EXE))
-    time.sleep(1.6)
+    winutil.launch(EXE, args)
 
 
 def hwnd():
@@ -67,12 +65,20 @@ def hwnd():
     return h
 
 
-def cmd(cmd_id):
+def cmd(cmd_id, until=None):
+    """Post a menu command, then wait for the state it is supposed to change.
+
+    The old version slept 0.5 s and hoped. The handler writes the registry on
+    the app's own thread, so the write is the observable: polling it finishes
+    in about a millisecond and cannot fail on a slow machine the way a fixed
+    sleep can.
+    """
     h = hwnd()
     if not h:
         return False
     u.PostMessageW(h, 0x0111, cmd_id, 0)   # WM_COMMAND
-    time.sleep(0.5)
+    if until is not None:
+        return winutil.wait_until(until, timeout=5.0)
     return True
 
 
@@ -182,16 +188,16 @@ run_exe("--clean", "--quiet")
 start()
 check("能定位到隐藏窗口", bool(hwnd()), True)
 
-cmd(IDM_TABS)
+cmd(IDM_TABS, until=lambda: key_exists(CFG))
 check("关掉「新建选项卡时重新加速窗口」后出现配置键", key_exists(CFG), True)
 check("Tabs 值为 0", val(CFG, "Tabs"), 0)
 
-cmd(IDM_TABS)
+cmd(IDM_TABS, until=lambda: not key_exists(CFG))
 check("恢复默认后配置键消失（不是留空壳）", key_exists(CFG), False)
 
 # 自启默认是「关」，所以第一次点击一定是写入。
 check("自启初始为关", val(RUN, "ExplorerF11") is None, True)
-cmd(IDM_AUTOSTART)
+cmd(IDM_AUTOSTART, until=lambda: val(RUN, "ExplorerF11") is not None)
 check("勾选自启后写入 Run 值", val(RUN, "ExplorerF11") is not None, True)
 check("自启项指向当前 exe",
       "ExplorerF11.exe" in (val(RUN, "ExplorerF11") or ""), True)
@@ -202,11 +208,12 @@ with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, APPROVED, 0, winreg.KEY_SET_VA
     winreg.SetValueEx(k, "ExplorerF11", 0, winreg.REG_BINARY,
                       b"\x03\x00\x00\x00" + b"\x00" * 8)
 check("已模拟任务管理器禁用", val(APPROVED, "ExplorerF11") is not None, True)
-cmd(IDM_AUTOSTART)   # 被禁用时托盘应显示为「关」，点一次 = 重新启用
+# 被禁用时托盘应显示为「关」，点一次 = 重新启用
+cmd(IDM_AUTOSTART, until=lambda: val(APPROVED, "ExplorerF11") is None)
 check("重新启用会清除 Windows 禁用位", val(APPROVED, "ExplorerF11") is None, True)
 check("重新启用后 Run 值仍在", val(RUN, "ExplorerF11") is not None, True)
 
-cmd(IDM_AUTOSTART)
+cmd(IDM_AUTOSTART, until=lambda: val(RUN, "ExplorerF11") is None)
 check("取消自启后 Run 值消失", val(RUN, "ExplorerF11") is None, True)
 check("取消自启后 StartupApproved 也不留", val(APPROVED, "ExplorerF11") is None, True)
 kill()
