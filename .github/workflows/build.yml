@@ -9,6 +9,11 @@ on:
 jobs:
   windows:
     runs-on: windows-latest
+    env:
+      # Python picks its stdout encoding from the console code page, and the
+      # suites print Chinese, Japanese and Korean. Without this, a green suite
+      # on a developer's machine dies with UnicodeEncodeError on the runner.
+      PYTHONUTF8: 1
     steps:
       - uses: actions/checkout@v4
 

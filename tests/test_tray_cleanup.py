@@ -12,6 +12,14 @@ The suite restores the caller's Run value and settings afterwards, because
 Run:  python tests/test_tray_cleanup.py
 """
 
+import sys as _sys
+
+# These suites print Chinese, Japanese and Korean. A Windows console defaults to
+# a legacy code page, where print() raises UnicodeEncodeError and the suite fails
+# for a reason that has nothing to do with the binary under test.
+if hasattr(_sys.stdout, "reconfigure"):
+    _sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 import os
 import subprocess
 import sys

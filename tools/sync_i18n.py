@@ -15,6 +15,14 @@ which new keys still need a translation, and regenerates the C++ table.
 
 Run:  python tools/sync_i18n.py
 """
+
+import sys as _sys
+
+# These tools print translated strings, which are Chinese, Japanese or Korean on
+# a machine whose console code page cannot represent them. Force UTF-8 so a
+# finding is reported instead of turning into UnicodeEncodeError.
+if hasattr(_sys.stdout, "reconfigure"):
+    _sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 import io
 import json
 import os

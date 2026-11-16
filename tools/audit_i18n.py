@@ -22,6 +22,14 @@ ASCII on purpose and is excluded before the check runs.
 Exit code 0 = clean, 1 = findings, so it can be a build gate.
 """
 
+import sys as _sys
+
+# These tools print translated strings, which are Chinese, Japanese or Korean on
+# a machine whose console code page cannot represent them. Force UTF-8 so a
+# finding is reported instead of turning into UnicodeEncodeError.
+if hasattr(_sys.stdout, "reconfigure"):
+    _sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 import json
 import os
 import re
