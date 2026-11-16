@@ -151,6 +151,36 @@ if current:
           "%d KiB" % F.SIZE_KIB)
     check("当前段不含旧标准声明", "C++17 and Win32 only" not in body)
 
+print("\n==== 6. 全仓库版本号残留 ====")
+# A version literal that is not the current one is stale by definition, and the
+# list of files that quote the version grows without anyone noticing: the issue
+# template still advertised 1.0.1 three releases later, and it was invisible
+# because it was never in CURRENT_FILES. Scan the whole tree instead of a list.
+# CHANGELOG.md is exempt: it is history, and its older sections are measurements
+# of older binaries.
+SKIP_DIRS = {".git", ".workbuddy", ".workbuddy-ai", "dist", "__pycache__", ".pytest_cache"}
+TEXT_EXT = (".md", ".yml", ".yaml", ".py", ".json", ".cpp", ".h", ".rc", ".txt",
+            ".bat", ".ps1", ".cfg", ".toml")
+stale_hits = []
+for dirpath, dirnames, filenames in os.walk(ROOT):
+    dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
+    for name in filenames:
+        if name == "CHANGELOG.md":
+            continue
+        if not (name.endswith(TEXT_EXT) or name in ("Makefile", ".editorconfig", ".gitattributes")):
+            continue
+        full = os.path.join(dirpath, name)
+        rel = os.path.relpath(full, ROOT).replace("\\", "/")
+        try:
+            with open(full, encoding="utf-8") as fh:
+                text = fh.read()
+        except (UnicodeDecodeError, OSError):
+            continue
+        for m in re.finditer(r"ExplorerF11[ -](\d+\.\d+\.\d+)", text):
+            if m.group(1) != F.VERSION:
+                stale_hits.append("%s: %s" % (rel, m.group(0)))
+check("无其他文件引用旧版本号", not stale_hits, "; ".join(stale_hits[:3]))
+
 bad = results.count(False)
 print("\n%s  %d/%d 通过" % ("ALL PASS" if not bad else "FAILURES",
                             len(results) - bad, len(results)))
