@@ -25,7 +25,7 @@ the invariant itself should change. See [docs/ARCHITECTURE.md](../docs/ARCHITECT
 
 ```
 make            # or build.bat
-make test       # 13 gates: 4 static checks + 9 suites, 322 assertions
+make test       # 13 gates: 4 static checks + 9 suites, 329 assertions
 ```
 
 - [ ] `make test` passes locally

@@ -718,18 +718,6 @@ static void UpdateTrayTip() {
     UpdateTrayTip(MarkedWindows());
 }
 
-// Pause/resume changes both the picture and the sentence.
-static void UpdateTrayIcon() {
-    if (!g_hwnd) return;
-    NOTIFYICONDATAW nid = {};
-    nid.cbSize = sizeof(nid);
-    nid.hWnd = g_hwnd;
-    nid.uID = TRAY_ID;
-    nid.uFlags = NIF_ICON;
-    nid.hIcon = TrayIconForState();
-    Shell_NotifyIconW(NIM_MODIFY, &nid);
-}
-
 // One notification for every surface that shows live state. The tooltip, the
 // tray picture and an open report all hang off this single call, so a change
 // can never reach one of them and miss another.
@@ -738,8 +726,25 @@ static void OnStateChanged() {
     // windows twice per event only doubled the cost without adding freshness:
     // both surfaces are updated in the same message dispatch.
     WindowMarks m = MarkedWindows();
-    UpdateTrayIcon();
-    UpdateTrayTip(m);
+    // One NIM_MODIFY carries icon + tip together. Two separate calls meant two
+    // cross-process round trips to explorer for every state change; across the
+    // nine events that funnel through here (create / destroy / restore / tab /
+    // pause / apply / apply-all / recovery / start-up sweep) that was the
+    // single most expensive behaviour in the program. A merged modify does not
+    // merge flags - it carries all three at once, exactly as AddTray already
+    // does - so NIF_SHOWTIP still accompanies NIF_TIP and the shell sees no
+    // difference. UpdateTrayTip() stays for NIN_POPUPOPEN and language changes,
+    // which must refresh the text without touching the icon.
+    if (g_hwnd) {
+        NOTIFYICONDATAW nid = {};
+        nid.cbSize = sizeof(nid);
+        nid.hWnd = g_hwnd;
+        nid.uID = TRAY_ID;
+        nid.uFlags = NIF_ICON | NIF_TIP | NIF_SHOWTIP;
+        nid.hIcon = TrayIconForState();
+        wcsncpy_s(nid.szTip, BuildTrayTip(m).c_str(), _TRUNCATE);
+        Shell_NotifyIconW(NIM_MODIFY, &nid);
+    }
     RefreshStatusIfOpen(&m);
 }
 

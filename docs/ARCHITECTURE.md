@@ -163,9 +163,15 @@ is kept rather than leaving an empty tray slot.
 The tooltip is the only surface visible without opening anything, and the shell
 caches its text at `NIM_ADD`. Two mechanisms keep it current:
 
-1. Every state change — window created or destroyed, restore, recovery timer,
-   pause, apply, apply-all, start-up sweep — funnels through `OnStateChanged()`,
-   which refreshes the tooltip, the tray image and any open report in one call.
+1. Every state change — window created or destroyed, restore, new tab, recovery
+   timer, pause, apply, apply-all, start-up sweep — funnels through
+   `OnStateChanged()`, which refreshes the tooltip, the tray image and any open
+   report in one call. It issues **one** `NIM_MODIFY` carrying `NIF_ICON |
+   NIF_TIP | NIF_SHOWTIP` instead of two separate calls: a `NIM_MODIFY` is a
+   cross-process round trip to explorer (~1.2 ms measured), so halving it was
+   the single largest cross-behaviour saving in the program. `UpdateTrayTip()`
+   remains only for `NIN_POPUPOPEN` and language changes, where the icon must
+   stay untouched.
 2. `NIM_SETVERSION` sets `NOTIFYICON_VERSION_4`, which delivers `NIN_POPUPOPEN`
    just before the shell draws the tooltip; the handler rebuilds the text there.
    Under version 4 the shell suppresses the standard tooltip unless `NIF_SHOWTIP`
@@ -283,7 +289,7 @@ including submenus as indented rows, so the layout test cannot drift from the UI
 Every suite restores the state it changed, including autostart and the stored
 language; the clean test only ever answers *No* to the confirmation.
 
-Thirteen gates, 322 assertions, each returning non-zero on failure:
+Thirteen gates, 329 assertions, each returning non-zero on failure:
 
 | Gate | Proves |
 |---|---|
@@ -306,6 +312,34 @@ be reproduced deterministically on a CI runner, so `test_robustness.py` pins
 their source contracts — recovery entries, tick validation, handle ownership,
 icon ownership and argument boundaries — rather than pretending to drive real
 shell events. This is a deliberate limit of the verification story.
+
+## Performance measurement
+
+Performance claims are reproducible, not adjectives. `make bench` builds
+`tools/bench_hotpaths.cpp` into a diagnostic executable (deliberately **not** a
+gate — it has no pass/fail threshold). It times each hot path over several
+warmed-up rounds with `QueryPerformanceCounter` and reports the median ms per
+1000 calls, so one Explorer hiccup cannot move a published figure.
+
+Measured on this machine (build 26300.9974, one folder window open; medians of
+two 400-iteration runs):
+
+| Path | ms / 1000 | Where it is used |
+|---|---|---|
+| `CollectResidues` (11 probes) | ~1500 | menu open, report refresh, `--status` |
+| — Win32 registry/file probes only | ~960 | the irreducible part of the above |
+| — string + struct construction | ~130 | rows that `CurrentTotals` discards |
+| `MarkedWindows` (`EnumWindows`) | ~235 | tooltip, menu header, report |
+| top-level window filter | ~130 | window create / activate |
+| one `NIM_MODIFY` IPC | ~1200 | each state change (now one, was two) |
+
+Three conclusions shaped 1.0.3. The tab-count fix targeted `MarkedWindows`
+(~0.23 ms), the cheapest of these; it was shared by three surfaces, which is
+why the tooltip A/B moved all of them. The dominant per-event cost was the pair
+of `NIM_MODIFY` calls, now merged. The residue probes remain un-cached on
+purpose: caching could cut a report refresh fourfold, but a snapshot shown two
+minutes late is worse than none, and a 1.5 ms scan on a user-initiated menu
+open is not worth a staleness bug.
 
 ## Known limits
 

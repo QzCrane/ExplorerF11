@@ -14,6 +14,17 @@ report test deterministic, and repairs the version-bump tool that had made
 
 ### Performance
 
+- **One tray IPC per state change, not two.** `OnStateChanged()` is the funnel
+  for nine behaviours — window created, destroyed, restored, new tab, pause,
+  apply, apply-all, partial-post recovery and the start-up sweep. Each one used
+  to send two `Shell_NotifyIconW(NIM_MODIFY)` cross-process round trips to
+  explorer (icon, then tip). A single modify now carries `NIF_ICON | NIF_TIP |
+  NIF_SHOWTIP` together — the same flag set `AddTray()` already uses — so the
+  shell sees no difference. Measured cost of one `NIM_MODIFY` is ~1.2 ms; the
+  merged path saves ~0.49 ms per state change (median of two 400-iteration A/B
+  runs; Explorer's own message pump makes the absolute figure noisy, the
+  call-count reduction is exact). `UpdateTrayTip()` remains for `NIN_POPUPOPEN`
+  and language changes, which refresh text without touching the icon.
 - **Tooltip refresh no longer walks every child of every window.** Tab counting
   used `GetWindow(GW_CHILD)` plus `GetClassNameW` on each sibling; it now uses
   `FindWindowExW` with `ShellTabWindowClass`, which does the class match inside
@@ -35,11 +46,16 @@ report test deterministic, and repairs the version-bump tool that had made
   with one `ShellTabWindowClass` child before taking the report. The tab-count
   assertion used to depend on whether an Explorer window happened to be open;
   it is now reproducible and checks both languages. The measured suite total
-  is 322 assertions.
+  is 329 assertions.
 - `tools/bump_version.py` had an unreachable `SECURITY.md` rule that aborted a
   bump after five files had already been rewritten, and an `ASSET` rule whose
   replacement added a second `% VERSION`. Both are fixed; version-derived
   strings now come from one script and are checked by the facts gate.
+- `tools/bench_hotpaths.cpp` (`make bench`) makes the performance figures above
+  reproducible: warmed-up `QueryPerformanceCounter` medians per 1000 calls for
+  every hot path. It is a measuring stick, not a gate. `test_robustness.py` adds
+  seven source-contract checks pinning the single-IPC `OnStateChanged()` so the
+  double round trip cannot return; the suite total is 329 assertions.
 
 ## 1.0.2 - 2026-11-16
 

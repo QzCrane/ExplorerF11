@@ -23,7 +23,7 @@ CHECKSUM = "SHA256SUMS.txt"
 GATES = 13
 STATIC_CHECKS = 4
 SUITES = 9
-ASSERTIONS = 322
+ASSERTIONS = 329
 
 SIZE_KIB = 370
 # A private-memory sample moves between 1.86 and 1.87 MB between runs. The

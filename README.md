@@ -162,7 +162,7 @@ make test
 Plain C++23 and Win32; the only imported libraries are `user32`, `shell32` and
 `advapi32`. `make test` runs 13 gates — four static checks over sources and
 translations, nine suites that drive the built binary rather than a mock — for
-322 assertions. Smoke tests open a real folder window and need a desktop session.
+329 assertions. Smoke tests open a real folder window and need a desktop session.
 One gate (`tests/test_robustness.py`) pins the event-driven and CLI fixes that a
 CI runner cannot exercise: shell-hook recovery, F11 recovery with handle reuse,
 console handle ownership, icon ownership and argument parsing.

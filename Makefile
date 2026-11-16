@@ -33,7 +33,16 @@ debug: CXXFLAGS := -std=c++23 -O0 -g -Wall -Wextra -municode -D_DEBUG
 debug: LDFLAGS  := -municode -static -static-libgcc -static-libstdc++
 debug: clean $(OUT)
 
-.PHONY: refresh-facts
+.PHONY: refresh-facts bench
+
+# Diagnostic micro-benchmark of the behaviour hot paths. NOT a gate: it is a
+# reproducible measuring stick, not a pass/fail check. Run on demand to back a
+# performance claim with a number. See tools/bench_hotpaths.cpp.
+BENCH := dist/bench_hotpaths.exe
+BENCH_SRC := tools/bench_hotpaths.cpp src/residue.cpp src/config.cpp src/i18n_extra.cpp
+bench:
+	$(CXX) $(filter-out -municode,$(CXXFLAGS)) -I. $(BENCH_SRC) -o $(BENCH) -static -static-libgcc -static-libstdc++ -luser32 -lshell32 -ladvapi32
+	@echo "built $(BENCH) - run it with an iteration count, e.g. dist\\bench_hotpaths.exe 400"
 
 test: $(OUT)
 	python tools/check_i18n.py

@@ -110,6 +110,28 @@ if os.path.exists(EXE):
         check_true("不再误报未知选项 (%s)" % tag,
                    "Unknown option" not in out and "未知选项" not in out)
 
+print("\n==== 7. 状态变化只发一次托盘 IPC ====")
+# Every state change (create/destroy/restore/tab/pause/apply/apply-all/
+# recovery/sweep) funnels through OnStateChanged. It used to issue two
+# NIM_MODIFY round trips (icon, then tip); now one carries NIF_ICON|TIP|SHOWTIP.
+_on_state = re.search(r"(?ms)static void OnStateChanged\(\) \{.*?\n\}", src)
+check_true("OnStateChanged 存在", _on_state is not None)
+if _on_state:
+    body = _on_state.group(0)
+    check_true("OnStateChanged 只调用一次 Shell_NotifyIconW",
+               body.count("Shell_NotifyIconW") == 1, str(body.count("Shell_NotifyIconW")))
+    check_true("单次 NIM_MODIFY 携带 icon+tip+showtip 三个 flag",
+               "NIF_ICON | NIF_TIP | NIF_SHOWTIP" in body)
+    check_true("NIF_SHOWTIP 仍与 NIF_TIP 同行（不丢悬浮提示）",
+               "NIF_TIP | NIF_SHOWTIP" in body)
+    check_true("窗口快照仍只取一次", body.count("MarkedWindows()") == 1,
+               str(body.count("MarkedWindows()")))
+check_true("UpdateTrayIcon 双调用已消除（无残留定义）",
+           re.search(r"static void UpdateTrayIcon\s*\(", src) is None)
+check_true("UpdateTrayTip 保留供 hover/language 单独刷新",
+           "static void UpdateTrayTip(const WindowMarks &m)" in src
+           and "static void UpdateTrayTip()" in src)
+
 bad = [r for r in results if not r[0]]
 print("\n%s  %d/%d 通过" % ("ALL PASS" if not bad else "FAILURES",
                             len(results) - len(bad), len(results)))

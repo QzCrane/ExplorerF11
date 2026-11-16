@@ -1,7 +1,7 @@
 {
-  "assertions_total": 322,
+  "assertions_total": 329,
   "handles": 135,
-  "private_mb": "1.85",
+  "private_mb": "1.86",
   "size_kib": 370,
   "suite_assertions": {
     "test_icons.py": 25,
@@ -10,7 +10,7 @@
     "test_menu_order.py": 74,
     "test_registry_policy.py": 28,
     "test_residue_report.py": 73,
-    "test_robustness.py": 24,
+    "test_robustness.py": 31,
     "test_smoke.py": 8,
     "test_tray_cleanup.py": 7
   },
