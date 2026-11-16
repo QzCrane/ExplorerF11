@@ -3,6 +3,7 @@
 #   make            release build -> dist/ExplorerF11.exe
 #   make debug      symbols, console subsystem
 #   make test       run the python test suite against the built exe
+#   make release    build, gate, tag, publish and verify in one command
 #   make clean
 #
 # The MSVC equivalent is build.bat; both produce the same single exe.
@@ -33,7 +34,14 @@ debug: CXXFLAGS := -std=c++23 -O0 -g -Wall -Wextra -municode -D_DEBUG
 debug: LDFLAGS  := -municode -static -static-libgcc -static-libstdc++
 debug: clean $(OUT)
 
-.PHONY: refresh-facts bench check-remote
+.PHONY: refresh-facts bench check-remote release
+
+# One command from clean checkout to verified release. Every stage is
+# idempotent and resumable: `make release ARGS=--from tag` re-enters after an
+# interruption, `ARGS=--dry-run` stops before anything becomes public.
+# See docs/RELEASING.md for the specification this implements.
+release:
+	python tools/release.py $(ARGS)
 
 # The repository's prose is gated locally, but four surfaces exist only on
 # GitHub: the tag's tree (what "Browse files" and the source archive show), the
