@@ -24,6 +24,11 @@ try:
 except ImportError:
     sys.exit("Pillow is required: python -m pip install pillow")
 
+# Same directory, so a regenerated icon is corrected in place by construction
+# instead of depending on someone remembering to run a second script.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from make_ico_bmp import rewrite_file   # noqa: E402  (needs the path first)
+
 SIZES = [16, 20, 24, 32, 40, 48, 64, 128, 256]
 SS = 8                     # supersampling factor for the anti-aliased master
 GRID = 256                 # logical design grid
@@ -48,7 +53,12 @@ def write(path, m):
     frames = [m.resize((s, s), Image.LANCZOS) for s in SIZES]
     frames[-1].save(path, format="ICO", sizes=[(s, s) for s in SIZES],
                     append_images=frames[:-1])
-    print(f"{path}  {path.stat().st_size:,} bytes  sizes {SIZES}")
+    # PIL stores every frame as PNG. The sizes this program loads (16-48) must be
+    # uncompressed DIB, otherwise LoadImageW pulls WIC - and WindowsCodecs.dll
+    # with it - into the tray process to draw a 16x16 bitmap. The 256 frame stays
+    # PNG: Explorer decodes that in its own process. See make_ico_bmp.py.
+    rewrite_file(path, path, quiet=True)
+    print(f"{path}  {path.stat().st_size:,} bytes  sizes {SIZES} (16-48 as DIB)")
 
 
 def write_png(path, m, size=128):

@@ -6,6 +6,147 @@ All notable changes to this project. Versions follow [SemVer](https://semver.org
 used while the tool was still being shaped; none of them was ever published, and
 they are kept below as build history rather than as releases.
 
+## 1.0.4 - 2026-11-16
+
+A pass over every behaviour, speed and memory alike, not just the two that had
+been measured, plus one defect the pass exposed. Nothing here changes what the
+program does: the tray, the menu, the report and the CLI print the same bytes.
+
+### Memory
+
+- **The icons no longer load the imaging stack.** Both .ico files stored all nine
+  sizes as PNG, so `LoadImageW` decoded them through WIC, and that one call
+  brought `WindowsCodecs.dll` (2.3 MB of code pages) into a tray process whose
+  actual bitmaps are 16x16. The sizes this program loads - 16, 20, 24, 32, 40, 48,
+  i.e. every DPI a tray icon and a title bar ask for - are now stored as
+  uncompressed DIB, where no decoder is involved. The large sizes stay PNG:
+  Explorer decodes those in its own process when it draws a thumbnail, so they
+  cost this program nothing and keep the file small. Measured on the tray:
+  private commit 1912 -> 1808 KB, working set 11264 -> 10352 KB (-8%), and
+  `WindowsCodecs` is no longer in the module list. The pixels are identical -
+  `LoadImageW` on the old and new files produces the same 16x16 BGRA bytes,
+  checked by hash for both icons and both states. The cost is 41 KiB of disk
+  (370 -> 411 KiB), 38 of them the two icon files themselves: a DIB is bigger
+  than the PNG it replaces. `make-icons.py`
+  now runs the conversion as part of generating the icons, so a regenerated icon
+  is correct by construction; `make_ico_bmp.py` does the rewrite and refuses to
+  write a file whose pixels differ. Regenerating from geometry reproduces the
+  shipped bytes exactly.
+- **What the memory audit could not improve, and why.** An empty Win32 message
+  loop built with these flags already commits 1584 KB, so 87% of the 1808 KB is
+  the floor of a static-CRT program plus the DLLs the loader brings; the tray's
+  own share is ~180 KB and the program's data is ~36 KB. `msctf.dll` (1.4 MB)
+  appears because the program owns an ordinary top-level window, and the
+  alternative - a message-only window - would stop receiving the system
+  broadcasts the DPI and theme handling depends on. The report window costs
+  ~584 KB private and 6 MB of working set the first time it opens, of which
+  ~384 KB is the frame alone: on Windows 11 a visible frame pulls in the
+  compositor's UI stack. None of that is reachable from this code. Numbers and
+  the method are in `docs/PERFORMANCE.md`.
+
+### Performance
+
+- **The marked-window set is maintained instead of rediscovered.** The count on
+  the tooltip comes from walking every top-level window and reading our property
+  on each one. On a 360-window desktop that walk measured ~0.26 ms, and 88% of
+  it was `GetPropW` - the enumeration alone was 0.04-0.09 ms. `Mark()` is the
+  only place the property is set, so it now reports the handle; every read
+  re-validates the recorded handles with `IsWindow` + `GetPropW`, and the first
+  read seeds from one full walk so marks left by an earlier run are still
+  counted. Same answer, 0.26 ms -> 0.002 ms (measured back to back in one
+  process, 147x). This is the path behind every hover and every state change, so
+  it also takes the report and the menu with it: a full report build dropped
+  1.52 ms -> 1.03 ms (-32%).
+- **`UserAssist` is searched with a rotated needle.** ROT13 is a per-character
+  bijection that commutes with case folding, so looking for the decoded name in
+  the decoded string is exactly the same as looking for the rotated name in the
+  raw string. One rotation per scan replaces a string build and a per-character
+  pass per value: 88 us -> 50 us over the 309 names on this machine (-43%). The
+  clean path uses the same hoist. `tools/bench_ua_match.cpp` proves the
+  equivalence against the live registry and prices the alternatives -
+  `StrStrIW`, the obvious "use the system's search" answer, was 19x slower.
+- **The tray is pushed only when its surface changes.** Every update is a
+  cross-process round trip to explorer (~1.2 ms), and most state changes end in
+  the same two lines of text: apply-all over windows that are already marked, a
+  second sweep, the recovery timer finding nothing at risk. `PushTraySurface()`
+  compares the freshly built tip and icon with what the shell was last told and
+  returns without an IPC when they match. The comparison is against live state,
+  not a cache, so a stale surface still corrects itself on the next event or
+  hover. `NIN_POPUPOPEN` now costs one mark lookup (~0.002 ms) and no round trip
+  instead of a full walk plus a round trip.
+- **The tray menu asks "is it there", not "what does it contain".** The label
+  shows a count of residue categories, but the builder ran the full eleven-probe
+  scan - every value of every UserAssist GUID, every tray record - to get it.
+  `CurrentResidueCategories()` uses the same presence rules and stops at the
+  first hit in each scan. Measured 1.29 -> 1.00 ms per menu open on this
+  machine; the gain is larger on a machine where the program's own records
+  exist early in a scan, which is every machine that has run it.
+- **An event burst rebuilds an open report once.** A full rebuild re-probes
+  eleven locations (~1.0 ms). Ten windows opening in a row used to run it ten
+  times to paint one final state; the event now marks the report dirty and posts
+  a single refresh. The rebuild still reads live system state - nothing is
+  cached - so the window is never stale, only rendered once.
+- **"Copy all" copies what is on screen instead of rebuilding it.** It used to
+  run the whole probe pass a second time to produce bytes the edit control was
+  already holding.
+- **One registry open for both boolean settings.** Startup and `--menu` read
+  `Tabs` and `InitialSweep` with two separate opens of the same key.
+- **The code is about 3 KiB larger.** The executable went from 370 to 411 KiB,
+  but 38 of those 41 are the icon files; the maintained set, its validation and
+  the measured button row are the rest. `-flto` would have paid for it, but this
+  toolchain is built without LTO support, so it is not an option here rather
+  than a choice.
+
+### Tests
+
+- `tests/test_robustness.py` replaces the 1.0.3 "one IPC inside
+  `OnStateChanged()`" contract with the sharper one: one push function, one
+  `NIM_MODIFY`, no call at all when the surface is unchanged, and no accounting
+  when the push failed. It also pins the coalesced refresh, the copy-without-
+  rescan path, `--no-initial`, that the menu count always equals the report
+  count, that `PROP_MARK` has exactly one writer which reports to the set, that
+  reads validate with `IsWindow` + `GetPropW` and never re-enumerate, that the
+  `UserAssist` scan keeps its needle rotation, and that both icon files keep
+  their 16-48 sizes as DIB with the 256 size still present. Suite total: 369
+  assertions.
+- `tools/bench_probes.cpp` breaks the report cost down per probe, which is what
+  showed `UserAssist` (48%) and the tray-icon store (28%) to be the two rows
+  worth measuring at all.
+- `tools/verify_marks.cpp` compares the maintained set against a fresh walk over
+  a live desktop in seven states - leftover mark before the first read, double
+  report, property removed behind the set's back, guarded unmark, real unmark,
+  destroyed window - so the 147x is not bought with a wrong number.
+- `tools/bench_ua_match.cpp` proves the ROT13 equivalence on the names actually
+  present and prices four search strategies on the same data.
+- `tools/measure_mem.cpp` walks a process's address space with `VirtualQueryEx`
+  and groups committed pages by type, module and protecting. Working set alone
+  cannot tell shared DLL pages from this program's own memory; this is what
+  showed that 87% of the commit is a floor.
+- `tools/mem_floor.cpp` builds the same executable with progressively more of
+  what the program does - message loop, tray icon, registry scan, a report-shaped
+  window with an EDIT - so each layer of memory has a measured boundary instead
+  of an attributed guess.
+- `tools/verify_handles.cpp` calls the real collection, report and mark readers
+  300 times each in one process and fails if the handle count grows. It stayed at
+  78 throughout, which is what ruled a handle leak out.
+- `tools/icon_probe.cpp` loads one 16x16 icon three ways - `LoadImageW`,
+  `CreateIconFromResourceEx`, `CreateIconIndirect` - and hashes the pixels back
+  out of the HICON, so the icon change is proven identical at the pixel level
+  rather than at the file level.
+
+### Fixed
+
+- **The English "Clean residues..." button no longer clips its label.** The
+  report's three buttons were a fixed 118 px wide, which fits the five-character
+  CJK labels but not their English translations; the English UI drew
+  "lean residues..." because the first character fell outside the button. Each
+  button is now measured from its own text in its own font, so every language
+  gets a whole label and the row is no wider than it needs to be.
+- `--no-initial` was parsed into `g_initial` and then overwritten two statements
+  later by the persisted setting, so the flag had never skipped a sweep. It is a
+  run-scoped flag now: this run's start-up sweep is skipped, the stored setting
+  and the menu tick are untouched.
+
 ## 1.0.3 - 2026-11-16
 
 Maintenance release. It lowers the cost of a tray hover, makes the residue

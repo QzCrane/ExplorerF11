@@ -113,6 +113,7 @@ static const UINT IDC_STATUS_CLOSE = 2004;
 static const UINT TRAY_ID        = 1001;
 static const UINT_PTR RISK_TIMER = 1;
 static const UINT WM_APP_INITIAL = WM_APP + 1;   // start-up sweep, after the loop runs
+static const UINT WM_APP_REFRESH = WM_APP + 2;   // coalesced rebuild of an open report
 
 static UINT  g_shellHookMsg      = 0;
 static UINT  g_taskbarCreatedMsg = 0;
@@ -121,7 +122,8 @@ static bool  g_log               = false;
 static bool  g_quiet             = false;   // --quiet: no message boxes, scriptable
 static bool  g_langExplicit      = false;   // --lang given on the command line
 static bool  g_tabs              = DEF_TABS;
-static bool  g_initial           = DEF_INITIAL;
+static bool  g_initial           = DEF_INITIAL;   // persisted setting (menu tick)
+static bool  g_skipInitial       = false;         // --no-initial: this run only
 static HWND  g_hwnd              = NULL;
 static HWND  g_lastFolder        = NULL;   // last folder window that got activated
 
@@ -266,10 +268,30 @@ static void RefreshStatus(HWND h, const WindowMarks *marks = nullptr) {
     if (e && top > 0) SendMessageW(e, EM_LINESCROLL, 0, top);
 }
 
-// Any change in what the tool has done must reach an open report immediately;
-// a window that shows a snapshot from two minutes ago is worse than no window.
+// Any change in what the tool has done must reach an open report; a window that
+// shows a snapshot from two minutes ago is worse than no window. It does not
+// have to reach it once per event, though: a full rebuild re-probes eleven
+// registry and file locations (~1.5 ms), and ten windows opening in a row would
+// run that scan ten times to paint one final state. Dirty-marking and posting a
+// single refresh collapses the burst into one rebuild. The rebuild itself still
+// reads live system state - nothing is cached - so freshness is unchanged and
+// only the redundant intermediate renders disappear.
+static bool         g_statusDirty        = false;
+static bool         g_refreshPosted      = false;
+static WindowMarks  g_pendingMarks;
+static bool         g_pendingMarksValid  = false;
+
 static void RefreshStatusIfOpen(const WindowMarks *marks = nullptr) {
-    if (g_status && IsWindow(g_status)) RefreshStatus(g_status, marks);
+    if (!g_status || !IsWindow(g_status)) return;
+    // A caller with no snapshot clears the pending one: the rebuild must take
+    // its own rather than pair a fresh probe result with an older window count.
+    g_pendingMarksValid = marks != nullptr;
+    if (marks) g_pendingMarks = *marks;
+    g_statusDirty = true;
+    if (!g_refreshPosted && g_hwnd) {
+        g_refreshPosted = true;
+        PostMessageW(g_hwnd, WM_APP_REFRESH, 0, 0);
+    }
 }
 
 // The one destructive action in the program, and the report window is its only
@@ -315,12 +337,15 @@ static const wchar_t *UiFontName() {
 
 // Called when the language changes while the report window is open: title,
 // buttons and body all follow, so the window is never half-translated.
+static void LayoutStatus(HWND h);   // button labels changed -> widths must too
+
 static void RelocalizeStatus(HWND h) {
     SetWindowTextW(h, T(L"ExplorerF11 \u00B7 \u6B8B\u7559\u62A5\u544A",
                         L"ExplorerF11 \u00B7 residue report"));
     SetDlgItemTextW(h, IDC_STATUS_COPY,  T(L"\u590D\u5236\u5168\u90E8", L"Copy all"));
     SetDlgItemTextW(h, IDC_STATUS_CLEAN, T(L"\u6E05\u7406\u6B8B\u7559\u2026", L"Clean residues\u2026"));
     SetDlgItemTextW(h, IDC_STATUS_CLOSE, T(L"\u5173\u95ED", L"Close"));
+    LayoutStatus(h);
     RefreshStatus(h);
     InvalidateRect(h, NULL, TRUE);
 }
@@ -343,19 +368,46 @@ static void CopyToClipboard(HWND owner, const std::wstring &s) {
     CloseClipboard();
 }
 
+// Width of a button's label in its own font, plus the padding Windows puts
+// around it. The report's three buttons used to be 118 px wide, which fits the
+// five-character CJK labels but clipped "Clean residues..." - the English UI
+// showed "lean residues...". Measuring the text keeps every language whole and
+// makes the row as narrow as its longest label.
+static int ButtonWidth(HWND h, int id) {
+    wchar_t text[128] = L"";
+    GetDlgItemTextW(h, id, text, 128);
+    HWND b = GetDlgItem(h, id);
+    HFONT font = b ? (HFONT)SendMessageW(b, WM_GETFONT, 0, 0) : NULL;
+    if (!font) font = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
+    int w = 0;
+    HDC dc = GetDC(h);
+    if (dc) {
+        HGDIOBJ old = SelectObject(dc, font);
+        SIZE s = {};
+        if (GetTextExtentPoint32W(dc, text, lstrlenW(text), &s)) w = s.cx;
+        SelectObject(dc, old);
+        ReleaseDC(h, dc);
+    }
+    w += 28;                       // button border + focus rectangle + breathing room
+    return w < 84 ? 84 : w;
+}
+
 static void LayoutStatus(HWND h) {
     RECT r;
     GetClientRect(h, &r);
     const int m = 12, bh = 32, gap = 8;
     int y  = r.bottom - m - bh;
-    int bw = 118;
     int x  = r.right - m;
+
+    int closeW = ButtonWidth(h, IDC_STATUS_CLOSE);
+    int cleanW = ButtonWidth(h, IDC_STATUS_CLEAN);
+    int copyW  = ButtonWidth(h, IDC_STATUS_COPY);
 
     MoveWindow(GetDlgItem(h, IDC_STATUS_TEXT), m, m,
                r.right - 2 * m, (y - gap) - m, TRUE);
-    x -= 84;  MoveWindow(GetDlgItem(h, IDC_STATUS_CLOSE), x, y, 84, bh, TRUE);
-    x -= gap + bw; MoveWindow(GetDlgItem(h, IDC_STATUS_CLEAN), x, y, bw, bh, TRUE);
-    x -= gap + bw; MoveWindow(GetDlgItem(h, IDC_STATUS_COPY),  x, y, bw, bh, TRUE);
+    x -= closeW; MoveWindow(GetDlgItem(h, IDC_STATUS_CLOSE), x, y, closeW, bh, TRUE);
+    x -= gap + cleanW; MoveWindow(GetDlgItem(h, IDC_STATUS_CLEAN), x, y, cleanW, bh, TRUE);
+    x -= gap + copyW;  MoveWindow(GetDlgItem(h, IDC_STATUS_COPY),  x, y, copyW, bh, TRUE);
 }
 
 static LRESULT CALLBACK StatusProc(HWND h, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -415,9 +467,23 @@ static LRESULT CALLBACK StatusProc(HWND h, UINT msg, WPARAM wParam, LPARAM lPara
 
     case WM_COMMAND:
         switch (LOWORD(wParam)) {
-        case IDC_STATUS_COPY:
-            CopyToClipboard(h, ToCrlf(BuildResidueReport(NULL, NULL)));
+        case IDC_STATUS_COPY: {
+            // The edit control already holds the rendered report. Re-probing
+            // the registry and rebuilding it would scan everything a second
+            // time to produce the identical bytes - copy what is on screen.
+            HWND e = GetDlgItem(h, IDC_STATUS_TEXT);
+            int n = e ? GetWindowTextLengthW(e) : 0;
+            if (n > 0) {
+                std::vector<wchar_t> buf((size_t)n + 1, 0);
+                int got = GetWindowTextW(e, buf.data(), n + 1);
+                CopyToClipboard(h, std::wstring(buf.data(), (size_t)got));
+            } else {
+                // Cannot happen through WM_CREATE, which fills the body, but a
+                // copy button that copies nothing is worse than a slow one.
+                CopyToClipboard(h, ToCrlf(BuildResidueReport(NULL, NULL)));
+            }
             break;
+        }
         case IDC_STATUS_CLEAN:
             RunClean(h);     // confirms first; never returns without an answer
             break;
@@ -520,6 +586,10 @@ static bool IsMarked(HWND h) { return GetPropW(h, PROP_MARK) != NULL; }
 static void Mark(HWND h) {
     SetPropW(h, PROP_MARK, (HANDLE)1);
     SetPropW(h, PROP_TICK, (HANDLE)(ULONG_PTR)GetTickCount64());
+    // This is the only place the mark is set. Telling the residue module here is
+    // what lets MarkedWindows() keep a set instead of re-reading the property of
+    // every top-level window on every hover.
+    RecordWindowMark(h);
 }
 static ULONG_PTR MarkedAt(HWND h) {
     return (ULONG_PTR)GetPropW(h, PROP_TICK);
@@ -660,16 +730,51 @@ static HICON TrayIconForState() {
 static std::wstring BuildTrayTip();   // defined below, needs the live state text
 static std::wstring BuildTrayTip(const WindowMarks &m);
 
+// What the shell is holding for our icon right now. Every tray update is a
+// cross-process round trip to explorer (~1.2 ms), and most state changes end
+// in the same two lines of text: apply-all over windows that are already
+// marked, a second sweep, the recovery timer firing on a window that is no
+// longer at risk, a hover whose count has not moved. Pushing only when the
+// bytes differ is the same picture on screen - the comparison is against a
+// freshly computed tip, never against an assumption, so a surface that has
+// actually gone stale still refreshes on the next event or hover.
+static std::wstring g_lastTip;
+static HICON        g_lastIcon  = NULL;
+static bool         g_trayLive  = false;   // false until NIM_ADD succeeded
+
+static void PushTraySurface(HICON icon, const std::wstring &tip) {
+    if (!g_hwnd) return;
+    if (g_trayLive && icon == g_lastIcon && tip == g_lastTip) return;
+    NOTIFYICONDATAW nid = {};
+    nid.cbSize = sizeof(nid);
+    nid.hWnd = g_hwnd;
+    nid.uID = TRAY_ID;
+    nid.uFlags = NIF_ICON | NIF_TIP | NIF_SHOWTIP;
+    nid.hIcon = icon;
+    wcsncpy_s(nid.szTip, tip.c_str(), _TRUNCATE);
+    if (Shell_NotifyIconW(NIM_MODIFY, &nid)) {
+        g_lastTip  = tip;
+        g_lastIcon = icon;
+        g_trayLive = true;
+    }
+}
+
 static void AddTray(HWND h) {
+    // One snapshot and one tip string feed all three pushes below. Rebuilding
+    // it per call meant enumerating every window two or three times in a row
+    // for a value that cannot change inside one message dispatch.
+    HICON icon = TrayIconForState();
+    std::wstring tipText = BuildTrayTip();
+
     NOTIFYICONDATAW nid = {};
     nid.cbSize = sizeof(nid);
     nid.hWnd = h;
     nid.uID = TRAY_ID;
     nid.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP | NIF_SHOWTIP;
     nid.uCallbackMessage = WM_TRAYICON;
-    nid.hIcon = TrayIconForState();
-    wcsncpy_s(nid.szTip, BuildTrayTip().c_str(), _TRUNCATE);
-    Shell_NotifyIconW(NIM_ADD, &nid);
+    nid.hIcon = icon;
+    wcsncpy_s(nid.szTip, tipText.c_str(), _TRUNCATE);
+    BOOL added = Shell_NotifyIconW(NIM_ADD, &nid);
 
     // Version 4 is what delivers NIN_POPUPOPEN, the only notification that
     // arrives just before the shell draws the tooltip: it lets the tip be
@@ -690,8 +795,16 @@ static void AddTray(HWND h) {
     tip.hWnd = h;
     tip.uID = TRAY_ID;
     tip.uFlags = NIF_TIP | NIF_SHOWTIP;
-    wcsncpy_s(tip.szTip, BuildTrayTip().c_str(), _TRUNCATE);
+    wcsncpy_s(tip.szTip, tipText.c_str(), _TRUNCATE);
     Shell_NotifyIconW(NIM_MODIFY, &tip);
+
+    // Record what the shell ended up with, so the next state change can skip a
+    // push that would not change anything. Only a successful NIM_ADD counts as
+    // live: if explorer was not there to add the icon, the next event should
+    // retry rather than trust a surface that was never installed.
+    g_lastIcon = icon;
+    g_lastTip  = tipText;
+    g_trayLive = added != FALSE;
 }
 
 // Rebuild the tooltip from live state and push it into the shell.
@@ -704,14 +817,7 @@ static void AddTray(HWND h) {
 // which is exactly how 6.2.0 turned a stale tooltip into no tooltip at all.
 // Every tip push must therefore carry both flags together.
 static void UpdateTrayTip(const WindowMarks &m) {
-    if (!g_hwnd) return;
-    NOTIFYICONDATAW nid = {};
-    nid.cbSize = sizeof(nid);
-    nid.hWnd = g_hwnd;
-    nid.uID = TRAY_ID;
-    nid.uFlags = NIF_TIP | NIF_SHOWTIP;
-    wcsncpy_s(nid.szTip, BuildTrayTip(m).c_str(), _TRUNCATE);
-    Shell_NotifyIconW(NIM_MODIFY, &nid);
+    PushTraySurface(TrayIconForState(), BuildTrayTip(m));
 }
 
 static void UpdateTrayTip() {
@@ -721,30 +827,20 @@ static void UpdateTrayTip() {
 // One notification for every surface that shows live state. The tooltip, the
 // tray picture and an open report all hang off this single call, so a change
 // can never reach one of them and miss another.
+//
+// Nine events funnel through here: window created, destroyed, restored from
+// minimized, new tab, pause, apply, apply-all, the recovery timer and the
+// start-up sweep. The push itself is memoised inside PushTraySurface: one
+// NIM_MODIFY carries icon + tip together and is skipped entirely when the
+// freshly computed surface equals what the shell already holds. That keeps the
+// single-IPC property this path was given in 1.0.3 and removes the remaining
+// round trips from the events that do not change the tray at all.
 static void OnStateChanged() {
     // One snapshot feeds the tooltip and, when open, the report. Enumerating
     // windows twice per event only doubled the cost without adding freshness:
     // both surfaces are updated in the same message dispatch.
     WindowMarks m = MarkedWindows();
-    // One NIM_MODIFY carries icon + tip together. Two separate calls meant two
-    // cross-process round trips to explorer for every state change; across the
-    // nine events that funnel through here (create / destroy / restore / tab /
-    // pause / apply / apply-all / recovery / start-up sweep) that was the
-    // single most expensive behaviour in the program. A merged modify does not
-    // merge flags - it carries all three at once, exactly as AddTray already
-    // does - so NIF_SHOWTIP still accompanies NIF_TIP and the shell sees no
-    // difference. UpdateTrayTip() stays for NIN_POPUPOPEN and language changes,
-    // which must refresh the text without touching the icon.
-    if (g_hwnd) {
-        NOTIFYICONDATAW nid = {};
-        nid.cbSize = sizeof(nid);
-        nid.hWnd = g_hwnd;
-        nid.uID = TRAY_ID;
-        nid.uFlags = NIF_ICON | NIF_TIP | NIF_SHOWTIP;
-        nid.hIcon = TrayIconForState();
-        wcsncpy_s(nid.szTip, BuildTrayTip(m).c_str(), _TRUNCATE);
-        Shell_NotifyIconW(NIM_MODIFY, &nid);
-    }
+    PushTraySurface(TrayIconForState(), BuildTrayTip(m));
     RefreshStatusIfOpen(&m);
 }
 
@@ -786,6 +882,10 @@ static void RemoveTray(HWND h) {
     nid.hWnd = h;
     nid.uID = TRAY_ID;
     Shell_NotifyIconW(NIM_DELETE, &nid);
+    // Nothing is in the tray now: the next push must not be skipped.
+    g_trayLive = false;
+    g_lastIcon = NULL;
+    g_lastTip.clear();
 }
 
 // The one definition of the live state. The tooltip and the menu header both
@@ -921,13 +1021,15 @@ static HMENU BuildTrayMenu() {
     // --- maintenance: residue first (read-only), then the destructive one
     {
         // The count is shown right in the menu, so "how dirty is it" is visible
-        // without opening anything. Totals only: building the whole report just
-        // to print a number would scan everything twice.
-        ResidueTotals t = CurrentTotals(&marks);
+        // without opening anything. Only the presence of each row matters here,
+        // so the probe stops at the first hit in every scan and builds no
+        // detail text: building the whole report to print a number would read
+        // every value of every UserAssist GUID on the machine.
+        int present = CurrentResidueCategories(&marks);
         std::wstring label;
-        if (!t.Clean())
+        if (present > 0)
             label = T(L"残留报告（", L"Residue report (") +
-                    FormatItemCount(t.Total()) + T(L"）…", L")\u2026");
+                    FormatItemCount(present) + T(L"）…", L")\u2026");
         else
             label = T(L"残留报告（干净）…", L"Residue report (clean)\u2026");
         AppendMenuW(m, MF_STRING, IDM_STATUS, label.c_str());
@@ -1078,7 +1180,9 @@ static LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wParam, LPARAM lParam) 
                                       NULL, RestoreProc, 0, 0,
                                       WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
         Log(g_winEvent ? L"started (tab hook ok)" : L"started (tab hook FAILED)");
-        if (g_initial) PostMessageW(h, WM_APP_INITIAL, 0, 0);
+        // --no-initial suppresses this run's sweep without pretending the
+        // persisted setting is off: the menu tick still shows what is stored.
+        if (g_initial && !g_skipInitial) PostMessageW(h, WM_APP_INITIAL, 0, 0);
         return 0;
 
     case WM_APP_INITIAL: {
@@ -1092,6 +1196,21 @@ static LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wParam, LPARAM lParam) 
                    c.n, c.skipped);
         Log(line);
         if (c.n) OnStateChanged();   // the report may already be open
+        return 0;
+    }
+
+    case WM_APP_REFRESH: {
+        // One rebuild for however many changes arrived since the last one. The
+        // snapshot saved by the last caller is the freshest one available, and
+        // the probes below run now, not at event time, so the report is live.
+        g_refreshPosted = false;
+        bool dirty = g_statusDirty;
+        g_statusDirty = false;
+        if (dirty && g_status && IsWindow(g_status)) {
+            if (g_pendingMarksValid) RefreshStatus(g_status, &g_pendingMarks);
+            else                     RefreshStatus(g_status);
+        }
+        g_pendingMarksValid = false;
         return 0;
     }
 
@@ -1120,6 +1239,7 @@ static LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wParam, LPARAM lParam) 
                 // can retry it. Leaving it marked would hide it forever.
                 RemovePropW(r, PROP_MARK);
                 RemovePropW(r, PROP_TICK);
+                RecordWindowUnmark(r);
                 changed = true;
             }
             if (changed) OnStateChanged();   // those windows no longer count
@@ -1402,7 +1522,7 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, PWSTR, int) {
             else if (_wcsicmp(argv[i], L"--status") == 0)     wantStatus = true;
             else if (_wcsicmp(argv[i], L"--menu") == 0)       wantMenu = true;
             else if (_wcsicmp(argv[i], L"--quiet") == 0)      g_quiet = true;
-            else if (_wcsicmp(argv[i], L"--no-initial") == 0) g_initial = false;  // this run only
+            else if (_wcsicmp(argv[i], L"--no-initial") == 0) g_skipInitial = true;
             else if (_wcsicmp(argv[i], L"--help") == 0 ||
                      _wcsicmp(argv[i], L"-h") == 0 ||
                      _wcsicmp(argv[i], L"/?") == 0)            wantHelp = true;
@@ -1459,8 +1579,7 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, PWSTR, int) {
     }
 
     if (wantMenu) {
-        g_tabs    = CfgRead(CFG_TABS, DEF_TABS);          // read-only, so the dump
-        g_initial = CfgRead(CFG_INITIAL, DEF_INITIAL);    // shows the real ticks
+        CfgReadSwitches(&g_tabs, &g_initial);   // read-only: the dump shows the real ticks
         std::wstring d = MenuDump();
         if (!Emit(d)) Say(d.c_str(), MB_ICONINFORMATION);
         return 0;
@@ -1502,8 +1621,7 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, PWSTR, int) {
 
     // Preferences live in the registry (not on the command line) so they survive
     // both autostart and self-relaunch, neither of which passes arguments.
-    g_tabs    = CfgRead(CFG_TABS, DEF_TABS);
-    g_initial = CfgRead(CFG_INITIAL, DEF_INITIAL);
+    CfgReadSwitches(&g_tabs, &g_initial);   // one key open for both switches
 
     if (wantInstall) SetAutostart(true);
 

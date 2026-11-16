@@ -77,11 +77,32 @@ int main(int argc, char **argv) {
 
     // ---- residue layer: shared by --status, --menu and the open report ----
     WindowMarks m = MarkedWindows();
+    // Before/after of the mark lookup, measured back to back in one process so
+    // the window count, the shell load and the registry cache are identical for
+    // both. "walk" is what the code did until 1.0.4: EnumWindows plus one
+    // GetPropW per top-level window. "current" validates the maintained set.
+    report("mark lookup: walk + prop (was)", ms_per_1000([&] {
+        int n = 0;
+        EnumWindows([](HWND h, LPARAM p) -> BOOL {
+            if (GetPropW(h, L"ExplorerF11.Marked")) ++*(int *)p;
+            return TRUE;
+        }, (LPARAM)&n);
+    }, iters, rounds));
     report("MarkedWindows (EnumWindows)", ms_per_1000([&] { MarkedWindows(); }, iters, rounds));
     report("CollectResidues (11 probes)", ms_per_1000([&] { CollectResidues(); }, iters, rounds));
-    report("CurrentTotals (menu count)", ms_per_1000([&] { CurrentTotals(); }, iters, rounds));
+    report("CurrentTotals (exact)", ms_per_1000([&] { CurrentTotals(); }, iters, rounds));
+    report("CurrentResidueCategories (menu)", ms_per_1000([&] { CurrentResidueCategories(&m); }, iters, rounds));
     report("BuildResidueReport (full)", ms_per_1000([&] { BuildResidueReport(); }, iters, rounds));
     report("BuildResidueReport (+marks)", ms_per_1000([&] { BuildResidueReport(NULL, NULL, &m); }, iters, rounds));
+
+    // Same work in the three table-driven languages. zh and en answer from the
+    // call site; ja/ko/zh-Hant go through TranslateExtra, which is a linear
+    // scan today. The gap is the cost of that scan, once per T() call.
+    SetLang(Lang::Ja);
+    report("BuildResidueReport (ja, table)", ms_per_1000([&] { BuildResidueReport(NULL, NULL, &m); }, iters, rounds));
+    report("TranslateExtra hit (ja, middle)", ms_per_1000(
+        [&] { TranslateExtra(L"\u9000\u51FA", Lang::Ja); }, iters * 10, rounds));
+    SetLang(Lang::En);
 
     // ---- decompose CollectResidues: probe (Win32) vs string formatting ----
     // Mirrors residue.cpp's eleven probes but does NO string building at all.

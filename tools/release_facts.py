@@ -16,21 +16,22 @@ Provenance:
                (MSVC is not byte-identical, so no build-time size assertion)
 """
 
-VERSION = "1.0.3"
+VERSION = "1.0.4"
 ASSET = "ExplorerF11-" + VERSION + "-win64.exe"
 CHECKSUM = "SHA256SUMS.txt"
 
 GATES = 13
 STATIC_CHECKS = 4
 SUITES = 9
-ASSERTIONS = 329
+ASSERTIONS = 369
 
-SIZE_KIB = 370
-# A private-memory sample moves between 1.86 and 1.87 MB between runs. The
-# published figure is therefore a ceiling, not a point sample; the raw value of
-# each refresh is kept in measurement.json for the record.
+SIZE_KIB = 411
+# Private bytes move by tens of KB between runs: 1.76-1.77 MB observed for this
+# build, with the detailed audit sample at 1808 KB. The gate's ceiling stays at
+# 2 MB so a refresh that drifts a little still passes, while a real regression
+# (the 2.3 MB icon decoder was one) does not.
 PRIVATE_CEIL_MB = 2
-HANDLES = 135
+HANDLES = 129
 THREADS_PEAK = 4
 THREADS_SETTLED = 1
 CPU_SECONDS = "0.03"

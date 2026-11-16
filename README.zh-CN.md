@@ -11,7 +11,7 @@
 ![language](https://img.shields.io/badge/language-C%2B%2B23-00599C)
 
 一个常驻托盘的 Windows 11 资源管理器加速工具：给新打开的文件夹窗口投递一次 F11
-往返。事件驱动，单文件 370 KiB 未签名 exe，默认配置下不写注册表。[English](README.md)。
+往返。事件驱动，单文件 411 KiB 未签名 exe，默认配置下不写注册表。[English](README.md)。
 
 <p align="center">
   <img src="docs/images/tray-menu.zh-CN.png" width="330" alt="托盘菜单">
@@ -27,7 +27,7 @@ ExplorerF11 用 `PostMessageW` 把这两次按键直接投进目标窗口的消�
 有四条边界决定了这个工具是什么：
 
 - **不轮询。** Shell 钩子报告顶层窗口创建，WinEvent 钩子报告选项卡创建和从最小化还原。
-  空闲时阻塞在 `GetMessageW`：实测私有内存低于 2 MB、135 个句柄，两分钟累计 CPU 约 0.03 秒。
+  空闲时阻塞在 `GetMessageW`：实测私有内存 1.76 MB、129 个句柄，两分钟累计 CPU 约 0.03 秒。
 - **不注入、不抢焦点。** `PostMessageW` 只投递按键消息，不碰前台窗口，也不改真实键盘状态。
   没有 DLL 注入、没有内存修改、不用 `SendInput`。
 - **一次动作对应一个窗口。** `F11` 由 `CabinetWClass` 窗口框架处理，一次往返覆盖该窗口的
@@ -42,11 +42,11 @@ ExplorerF11 用 `PostMessageW` 把这两次按键直接投进目标窗口的消�
 ## 安装与首次运行
 
 从[最新发行版](https://github.com/QzCrane/ExplorerF11/releases/latest)下载
-`ExplorerF11-1.0.3-win64.exe`，核对哈希，放到一个固定位置——它不写文件，放哪都行，
+`ExplorerF11-1.0.4-win64.exe`，核对哈希，放到一个固定位置——它不写文件，放哪都行，
 推荐 `%LOCALAPPDATA%\Programs\ExplorerF11\`。
 
 ```powershell
-Get-FileHash .\ExplorerF11-1.0.3-win64.exe -Algorithm SHA256
+Get-FileHash .\ExplorerF11-1.0.4-win64.exe -Algorithm SHA256
 ```
 
 二进制**未做代码签名**，首次运行 SmartScreen 会警告。请先与发行页上的 SHA-256 比对。
@@ -138,7 +138,7 @@ make test
 ```
 
 纯 C++23 + Win32，只导入 `user32`、`shell32` 和 `advapi32`。`make test` 跑 13 道闸门：
-4 项静态检查和 9 个直接驱动编译产物的套件，合计 329 项断言。冒烟测试会打开真实的文件夹
+4 项静态检查和 9 个直接驱动编译产物的套件，合计 369 项断言。冒烟测试会打开真实的文件夹
 窗口，需要桌面会话。其中 `tests/test_robustness.py` 锁定的是 CI 无法复现的事件驱动路径与
 CLI 行为：Shell 钩子恢复、带句柄复用的 F11 恢复、控制台句柄所有权、图标所有权和参数解析。
 
@@ -147,6 +147,7 @@ CLI 行为：Shell 钩子恢复、带句柄复用的 F11 恢复、控制台句�
 | [docs/USAGE.zh-CN.md](docs/USAGE.zh-CN.md) · [English](docs/USAGE.en.md) | 每个选项、菜单项、对话框与失败情形 |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 模块边界、事件模型、Win32 细节、资源占用 |
 | [docs/RESIDUE.md](docs/RESIDUE.md) | 11 个位置、写入策略、手工核对 |
+| [docs/PERFORMANCE.md](docs/PERFORMANCE.md) | 每类行为的成本、已做的优化、以及被否掉的方案及原因 |
 | [docs/RESEARCH.md](docs/RESEARCH.md) | 实测、更新史、同类工具、被否掉的方案 |
 | [docs/RELEASING.md](docs/RELEASING.md) | 版本号改哪几处、闸门、产物构建与发布 |
 | [SECURITY.md](SECURITY.md) | 权限使用、攻击面、二进制核对 |

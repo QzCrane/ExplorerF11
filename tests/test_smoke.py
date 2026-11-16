@@ -32,8 +32,8 @@ EXE = os.path.join(ROOT, "dist", "ExplorerF11.exe")
 LOG = os.path.join(os.environ["TEMP"], "ExplorerF11.log")
 TARGET = r"C:\Windows\System32\drivers"
 
-# Published profile (docs/ARCHITECTURE.md): one idle thread, under 2 MB private,
-# ~135 handles. The ceilings are generous on purpose - this catches leaks and
+# Published profile (docs/ARCHITECTURE.md): one idle thread, 1.76 MB private,
+# 129 handles. The ceilings are generous on purpose - this catches leaks and
 # runaway allocation, not a 200 KB regression.
 MAX_PRIVATE_MB = 12.0
 MAX_HANDLES = 300

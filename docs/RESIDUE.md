@@ -74,7 +74,7 @@ of an uninstall and is deliberately left to the user.
 Everything removable, worst case: **under 6 KB**, excluding Prefetch. Nothing
 grows with use — there is no history, no database, no cache of the tool's own,
 and no log unless `--log` was passed. The two icon resources account for about
-60 KB of the executable itself, not of its residue.
+79 KB of the executable itself, not of its residue.
 
 ## Write policy
 

@@ -22,6 +22,16 @@ bool AutostartBlocked() {
     return blocked;
 }
 
+// One boolean value on an already-open CFG_KEY. Shared by CfgRead and
+// CfgReadSwitches so both follow the same "absent or wrong type = default" rule.
+bool ReadBoolOnKey(HKEY k, const wchar_t *name, bool def) {
+    DWORD v = def ? 1u : 0u, cb = sizeof(v), type = 0;
+    if (RegQueryValueExW(k, name, NULL, &type, (BYTE *)&v, &cb) != ERROR_SUCCESS ||
+        type != REG_DWORD)
+        v = def ? 1u : 0u;
+    return v != 0;
+}
+
 }  // namespace
 
 std::wstring ExePath() {
@@ -98,12 +108,24 @@ bool CfgRead(const wchar_t *name, bool def) {
     HKEY k;
     if (RegOpenKeyExW(HKEY_CURRENT_USER, CFG_KEY, 0, KEY_QUERY_VALUE, &k) != ERROR_SUCCESS)
         return def;
-    DWORD v = def ? 1u : 0u, cb = sizeof(v), type = 0;
-    if (RegQueryValueExW(k, name, NULL, &type, (BYTE *)&v, &cb) != ERROR_SUCCESS ||
-        type != REG_DWORD)
-        v = def ? 1u : 0u;
+    bool v = ReadBoolOnKey(k, name, def);
     RegCloseKey(k);
-    return v != 0;
+    return v;
+}
+
+// Startup and --menu need both switches, and reading them separately opened
+// the same key twice in a row. One open, two queries, same defaults and the
+// same "absent / wrong type means the default" rule as CfgRead.
+void CfgReadSwitches(bool *tabs, bool *initial) {
+    bool t = DEF_TABS, i = DEF_INITIAL;
+    HKEY k;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, CFG_KEY, 0, KEY_QUERY_VALUE, &k) == ERROR_SUCCESS) {
+        t = ReadBoolOnKey(k, CFG_TABS, DEF_TABS);
+        i = ReadBoolOnKey(k, CFG_INITIAL, DEF_INITIAL);
+        RegCloseKey(k);
+    }
+    if (tabs)    *tabs = t;
+    if (initial) *initial = i;
 }
 
 // Delete a value, then drop the key if nothing else lives in it.

@@ -11,7 +11,7 @@
 ![language](https://img.shields.io/badge/language-C%2B%2B23-00599C)
 
 A tray utility that sends an F11 round trip to newly opened Windows 11 Explorer
-windows. Event-driven, one unsigned 370 KiB executable, no registry writes under
+windows. Event-driven, one unsigned 411 KiB executable, no registry writes under
 the default configuration. [中文说明](README.zh-CN.md).
 
 <p align="center">
@@ -31,7 +31,7 @@ Four details define what the tool is:
 
 - **No polling.** A shell hook reports top-level window creation; a WinEvent hook
   reports tab creation and restore-from-minimised. Idle time is spent blocked in
-  `GetMessageW`: under 2 MB private, 135 handles, 0.03 s cumulative CPU over two
+  `GetMessageW`: 1.76 MB private, 129 handles, 0.03 s cumulative CPU over two
   minutes on the test machine.
 - **No injection, no focus theft.** `PostMessageW` delivers key messages without
   touching the foreground window or the real keyboard state. There is no DLL
@@ -52,13 +52,13 @@ the update history and the rejected alternatives are in
 
 ## Install and first run
 
-Download `ExplorerF11-1.0.3-win64.exe` from the
+Download `ExplorerF11-1.0.4-win64.exe` from the
 [latest release](https://github.com/QzCrane/ExplorerF11/releases/latest), check
 its hash, and put it anywhere permanent — it writes no files, so any folder
 works. `%LOCALAPPDATA%\Programs\ExplorerF11\` is a reasonable choice.
 
 ```powershell
-Get-FileHash .\ExplorerF11-1.0.3-win64.exe -Algorithm SHA256
+Get-FileHash .\ExplorerF11-1.0.4-win64.exe -Algorithm SHA256
 ```
 
 The binary is **not code-signed**; SmartScreen will warn on first run. Compare
@@ -162,7 +162,7 @@ make test
 Plain C++23 and Win32; the only imported libraries are `user32`, `shell32` and
 `advapi32`. `make test` runs 13 gates — four static checks over sources and
 translations, nine suites that drive the built binary rather than a mock — for
-329 assertions. Smoke tests open a real folder window and need a desktop session.
+369 assertions. Smoke tests open a real folder window and need a desktop session.
 One gate (`tests/test_robustness.py`) pins the event-driven and CLI fixes that a
 CI runner cannot exercise: shell-hook recovery, F11 recovery with handle reuse,
 console handle ownership, icon ownership and argument parsing.
@@ -172,6 +172,7 @@ console handle ownership, icon ownership and argument parsing.
 | [docs/USAGE.en.md](docs/USAGE.en.md) · [中文](docs/USAGE.zh-CN.md) | every option, menu item, dialog and failure mode |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | module boundaries, event model, Win32 details, resource profile |
 | [docs/RESIDUE.md](docs/RESIDUE.md) | the 11 locations, write policy, manual verification |
+| [docs/PERFORMANCE.md](docs/PERFORMANCE.md) | every behaviour's cost, the optimisations, and the ones rejected with reasons |
 | [docs/RESEARCH.md](docs/RESEARCH.md) | measurements, update history, competing tools, rejected approaches |
 | [docs/RELEASING.md](docs/RELEASING.md) | version bumps, gates, artefact build and publication |
 | [SECURITY.md](SECURITY.md) | privilege use, attack surface, binary verification |

@@ -1,7 +1,7 @@
 # Architecture
 
 This document describes what the shipped binary does. It is written against
-version 1.0.3 and the source tree at that tag; where a claim depends on a Win32
+version 1.0.4 and the source tree at that tag; where a claim depends on a Win32
 detail, the detail is named so the claim can be checked. For user-facing
 behaviour see [USAGE.en.md](USAGE.en.md); for the evidence behind the F11 trick
 see [RESEARCH.md](RESEARCH.md).
@@ -82,11 +82,21 @@ would fire a second F11 cycle into a window whose first cycle was still
 animating.
 
 `MarkedWindows()` in `residue.cpp` is the only place that produces counts. It
-walks top-level windows once, counts marked frames and their direct
+counts the frames the program has marked and their direct
 `ShellTabWindowClass` children, and formats the sentence used by the tooltip,
 the tray menu header and the report. Three surfaces call one function, so they
 cannot disagree. The counted unit is the window because `PostF11Raw` targets the
 frame: all tabs in it enter and leave fullscreen together.
+
+The marked frames are kept as a set of handles rather than rediscovered by
+walking the desktop on every call. `Mark()` — the only writer of the property —
+reports each new handle, and every read re-validates the recorded handles with
+`IsWindow` + `GetPropW`, so a destroyed window, a recycled handle or a property
+lost to an explorer restart drops out by itself; a window is never counted
+because it is in the set, only because it still carries the property. The first
+read seeds from one full walk, which is how marks left by an earlier run are
+still seen. Reading a property on 360 windows cost 0.26 ms and the walk that the
+set replaces is what the tooltip paid on every hover.
 
 ## F11 delivery and recovery
 
@@ -166,12 +176,16 @@ caches its text at `NIM_ADD`. Two mechanisms keep it current:
 1. Every state change — window created or destroyed, restore, new tab, recovery
    timer, pause, apply, apply-all, start-up sweep — funnels through
    `OnStateChanged()`, which refreshes the tooltip, the tray image and any open
-   report in one call. It issues **one** `NIM_MODIFY` carrying `NIF_ICON |
-   NIF_TIP | NIF_SHOWTIP` instead of two separate calls: a `NIM_MODIFY` is a
-   cross-process round trip to explorer (~1.2 ms measured), so halving it was
-   the single largest cross-behaviour saving in the program. `UpdateTrayTip()`
-   remains only for `NIN_POPUPOPEN` and language changes, where the icon must
-   stay untouched.
+   report in one call. The push itself is memoised in `PushTraySurface()`: it
+   compares the freshly built tip and icon with what the shell was last told and
+   returns before the IPC when they match. One `NIM_MODIFY` carries `NIF_ICON |
+   NIF_TIP | NIF_SHOWTIP` instead of two separate calls — a modify is a
+   cross-process round trip to explorer (~1.2 ms measured), so merging it in
+   1.0.3 and skipping it here were the two largest cross-behaviour savings in
+   the program. The comparison is against live state, never a cache: most state
+   changes (a second apply-all, a recovery timer that finds nothing, a hover
+   whose count has not moved) now cost no IPC at all, and a surface that really
+   moved still pushes.
 2. `NIM_SETVERSION` sets `NOTIFYICON_VERSION_4`, which delivers `NIN_POPUPOPEN`
    just before the shell draws the tooltip; the handler rebuilds the text there.
    Under version 4 the shell suppresses the standard tooltip unless `NIF_SHOWTIP`
@@ -271,14 +285,18 @@ shortly after start-up:
 
 | | Measured | Notes |
 |---|---|---|
-| Private bytes | under 2 MB | no CRT heap growth after start-up |
-| Handles | 135 | window, hooks, tray icon, mutex and thread pool |
+| Private bytes | 1.76 MB | of which 1.55 MB is what an empty program built with these flags commits; no heap growth after start-up (300 passes of every reader leave the handle count flat) |
+| Handles | 129 | window, hooks, tray icon, mutex and thread pool |
 | Threads | 4 transient, 1 settled | three `TpWorkerFactory` helpers exit after roughly 45 s idle |
 | CPU | 0.03 s cumulative / 2 min | start-up cost; steady state is blocked in `GetMessageW` |
-| Disk | 370 KiB | static CRT, `-Os`, stripped; 60 KB is the two icon resources |
+| Disk | 411 KiB | static CRT, `-Os`, stripped; the resource section is 81 KiB, 79 of it the two icons - 38 KiB more than the PNG-only versions, which is what buys the smaller memory footprint below |
 
 The binary imports `KERNEL32`, `USER32`, `GDI32`, `SHELL32`, `ADVAPI32` and
 `msvcrt` — no networking library, no scripting host, no dynamic code loading.
+It no longer causes `WindowsCodecs.dll` to load: the icon sizes it draws are
+stored as uncompressed DIB, so no imaging decoder is involved. `msctf.dll` still
+appears, because the program owns an ordinary top-level window. Both facts are
+measured and explained in [PERFORMANCE.md](PERFORMANCE.md#memory).
 
 ## Tests
 
@@ -289,7 +307,7 @@ including submenus as indented rows, so the layout test cannot drift from the UI
 Every suite restores the state it changed, including autostart and the stored
 language; the clean test only ever answers *No* to the confirmation.
 
-Thirteen gates, 329 assertions, each returning non-zero on failure:
+Thirteen gates, 369 assertions, each returning non-zero on failure:
 
 | Gate | Proves |
 |---|---|
@@ -321,25 +339,35 @@ gate — it has no pass/fail threshold). It times each hot path over several
 warmed-up rounds with `QueryPerformanceCounter` and reports the median ms per
 1000 calls, so one Explorer hiccup cannot move a published figure.
 
-Measured on this machine (build 26300.9974, one folder window open; medians of
-two 400-iteration runs):
+The complete model — every behaviour, its budget, its measured cost, and the
+optimisations that were rejected with reasons — is in
+[PERFORMANCE.md](PERFORMANCE.md). The one-table version, ms per 1000 calls,
+median of three 400-iteration runs on this machine:
 
 | Path | ms / 1000 | Where it is used |
 |---|---|---|
-| `CollectResidues` (11 probes) | ~1500 | menu open, report refresh, `--status` |
-| — Win32 registry/file probes only | ~960 | the irreducible part of the above |
-| — string + struct construction | ~130 | rows that `CurrentTotals` discards |
-| `MarkedWindows` (`EnumWindows`) | ~235 | tooltip, menu header, report |
-| top-level window filter | ~130 | window create / activate |
-| one `NIM_MODIFY` IPC | ~1200 | each state change (now one, was two) |
+| `CollectResidues` (11 probes) | ~1040 | report, `--status` |
+| `CurrentResidueCategories` (presence only) | ~1000 | menu open, `--menu` |
+| one `NIM_MODIFY` IPC | ~1200–1700 | each push that changes the surface |
+| `MarkedWindows` (validated set) | **~2** | tooltip, menu header, report |
+| mark lookup as a full walk (1.0.3) | ~260 | what the line above replaced |
+| top-level window filter | ~130–170 | window create / activate |
 
-Three conclusions shaped 1.0.3. The tab-count fix targeted `MarkedWindows`
-(~0.23 ms), the cheapest of these; it was shared by three surfaces, which is
-why the tooltip A/B moved all of them. The dominant per-event cost was the pair
-of `NIM_MODIFY` calls, now merged. The residue probes remain un-cached on
-purpose: caching could cut a report refresh fourfold, but a snapshot shown two
-minutes late is worse than none, and a 1.5 ms scan on a user-initiated menu
-open is not worth a staleness bug.
+Five conclusions shaped the current build. The 1.0.3 tab-count fix targeted
+`MarkedWindows`, which turned out to be the cheapest shared path; what made it
+worth keeping is that three surfaces call it. The dominant per-event cost was the
+pair of `NIM_MODIFY` calls, merged into one in 1.0.3 and now skipped entirely
+when the freshly built surface equals what the shell already holds. The biggest
+remaining cost was inside that same window walk: the enumeration is 0.04–0.09 ms
+and the property read is 88% of the rest, so the program now keeps the marked
+handles and re-validates them instead of rediscovering them — 0.26 ms to
+0.002 ms, which also took a full report build from 1.52 ms to 1.03 ms. The menu's
+count no longer runs the full probe pass, because presence — not content — is
+all the label shows. The residue probes remain un-cached on purpose: caching
+could cut a report rebuild fourfold, but a report that can be silently stale is
+the one thing this program may not ship, and a 1 ms scan on a user-initiated
+action is not worth it. `tools/verify_marks.cpp` checks the maintained set
+against a fresh walk in seven live states.
 
 ## Known limits
 

@@ -18,6 +18,10 @@ std::wstring ExeDir();
 std::wstring LogPath();          // %TEMP%\ExplorerF11.log (only with --log)
 
 bool CfgRead(const wchar_t *name, bool def);
+
+// Both boolean settings in one key open. Startup and --menu need both; the
+// separate reads they used to make opened the same key twice.
+void CfgReadSwitches(bool *tabs, bool *initial);
 void CfgWrite(const wchar_t *name, bool value, bool def);
 void CfgForget(const wchar_t *name);
 
