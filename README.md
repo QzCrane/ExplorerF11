@@ -49,14 +49,14 @@ This one was written to answer three questions properly:
 ## Download
 
 [**Latest release**](https://github.com/QzCrane/ExplorerF11/releases/latest) —
-`ExplorerF11-1.0.0-win64.exe`, 366 KiB, x64.
+`ExplorerF11-1.0.1-win64.exe`, 366 KiB, x64.
 
 - Single file. No installer, no runtime, no service, no admin rights.
 - The binary is **not code-signed**, so SmartScreen warns on first run. Verify
   the SHA-256 listed on the release page before you run it:
 
   ```powershell
-  Get-FileHash .\ExplorerF11-1.0.0-win64.exe -Algorithm SHA256
+  Get-FileHash .\ExplorerF11-1.0.1-win64.exe -Algorithm SHA256
   ```
 
 - Every release is built from the tagged commit, and the release notes record

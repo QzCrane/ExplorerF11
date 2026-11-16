@@ -402,5 +402,9 @@
   {
     "zh": "用 --help 查看全部选项。\n",
     "en": "Run --help for the full list.\n"
+  },
+  {
+    "zh": "--lang 缺少语言标签。\n",
+    "en": "--lang requires a language tag.\n"
   }
 ]

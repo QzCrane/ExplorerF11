@@ -45,6 +45,7 @@ jobs:
         run: |
           python tests/test_lang_names.py
           python tests/test_menu_order.py
+          python tests/test_robustness.py
 
       - name: Smoke test the binary
         shell: cmd
@@ -56,7 +57,7 @@ jobs:
           rem encoding cannot influence the result.
           dist\ExplorerF11.exe --version --quiet > dist\version.txt 2>&1
           type dist\version.txt
-          findstr /C:"ExplorerF11 1.0.0" dist\version.txt >nul || exit /b 1
+          findstr /C:"ExplorerF11 1.0.1" dist\version.txt >nul || exit /b 1
 
           dist\ExplorerF11.exe --help --quiet > dist\help.txt 2>&1
           findstr /C:"--status" dist\help.txt >nul || exit /b 1

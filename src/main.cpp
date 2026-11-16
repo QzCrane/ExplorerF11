@@ -123,8 +123,15 @@ static bool  g_langExplicit      = false;   // --lang given on the command line
 static bool  g_tabs              = DEF_TABS;
 static bool  g_initial           = DEF_INITIAL;
 static HWND  g_hwnd              = NULL;
-static HWND  g_risk              = NULL;
 static HWND  g_lastFolder        = NULL;   // last folder window that got activated
+
+// Windows whose F11 pair was only partially delivered and need a one-shot
+// recovery. A window is identified by (handle, tick-at-mark): the tick is our
+// own PROP_TICK, so a handle recycled onto a different window in the 500 ms
+// window fails the check and is never poked or unmarked by mistake. More than
+// one window can be at risk at once, so this is a list, not a single slot.
+struct RiskEntry { HWND hwnd; ULONG_PTR tick; };
+static std::vector<RiskEntry> g_risks;
 // Icons are loaded from our own resources at the size the shell asks for, and
 // kept for the life of the process so the tray can re-use them after an
 // Explorer restart. They are ours, so WM_DESTROY destroys them.
@@ -546,9 +553,14 @@ static bool Accelerate(HWND h, bool force) {
     if (ok == 4) return true;
 
     // A partially delivered pair can leave the window in fullscreen.
-    // Schedule a one-shot recovery that can only ever exit fullscreen.
+    // Schedule a one-shot recovery that can only ever exit fullscreen. Record
+    // the mark tick so recovery can tell a recycled handle from our window.
     Log(L"partial post, scheduling recovery");
-    g_risk = h;
+    ULONG_PTR tick = MarkedAt(h);
+    bool tracked = false;
+    for (const RiskEntry &e : g_risks)
+        if (e.hwnd == h && e.tick == tick) { tracked = true; break; }
+    if (!tracked) g_risks.push_back({h, tick});
     SetTimer(g_hwnd, RISK_TIMER, 500, NULL);
     return false;
 }
@@ -624,8 +636,15 @@ static HICON LoadAppIcon(bool paused, bool small) {
                                 MAKEINTRESOURCEW(paused ? IDI_APP_PAUSED : IDI_APP),
                                 IMAGE_ICON, cx, cy, LR_DEFAULTCOLOR);
     // Only reachable if the resource failed to compile in; better a generic
-    // icon than an empty tray slot.
-    return h ? h : LoadIconW(NULL, IDI_APPLICATION);
+    // icon than an empty tray slot. LoadIconW(NULL, ...) returns a SYSTEM-shared
+    // icon that must never be DestroyIcon'd, but WM_DESTROY destroys all g_icon*
+    // unconditionally. Take a private copy so ownership stays unambiguous.
+    if (h) return h;
+    HICON sys = LoadIconW(NULL, IDI_APPLICATION);
+    if (!sys) return NULL;
+    HICON copy = DuplicateIcon(GetModuleHandleW(NULL), sys);
+    return copy ? copy : sys;   // if the copy failed, better a shared icon than none
+
 }
 
 static HICON TrayIconForState() {
@@ -977,14 +996,19 @@ static LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wParam, LPARAM lParam) 
         DWORD err = GetLastError();
         if (ok) {
             Log(L"explorer restarted: shell hook re-registered");
+            RemoveTray(h);
+            AddTray(h);
         } else {
             wchar_t line[128];
             swprintf_s(line, L"re-register failed (err=%lu), relaunching", err);
             Log(line);
+            // RelaunchSelf() calls DestroyWindow(g_hwnd), which is synchronous
+            // for a window on this thread and dispatches WM_DESTROY (tray removed,
+            // hooks unhooked, quit posted). h is dead on return: adding a tray
+            // icon back with it would leave an orphan pointing at a gone window.
+            // The new instance rebuilds the tray in its own WM_CREATE.
             RelaunchSelf();
         }
-        RemoveTray(h);
-        AddTray(h);
         return 0;
     }
 
@@ -1057,9 +1081,18 @@ static LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wParam, LPARAM lParam) 
     case WM_TIMER:
         if (wParam == RISK_TIMER) {
             KillTimer(h, RISK_TIMER);
-            HWND r = g_risk;
-            g_risk = NULL;
-            if (r && IsWindow(r)) {
+            std::vector<RiskEntry> pending;
+            pending.swap(g_risks);   // take all; a risk posted during the loop
+                                     // re-arms the timer into a fresh batch
+            bool changed = false;
+            for (const RiskEntry &e : pending) {
+                HWND r = e.hwnd;
+                if (!r || !IsWindow(r)) continue;
+                // The tick is our identity token. If the handle was recycled or
+                // the window was re-accelerated meanwhile, the mark no longer
+                // matches - touching it would poke an unrelated window and
+                // strip a valid mark. Skip it untouched in that case.
+                if (!IsMarked(r) || MarkedAt(r) != e.tick) continue;
                 if (LooksFullscreen(r)) {
                     PostMessageW(r, WM_KEYDOWN, VK_F11, 0);
                     PostMessageW(r, WM_KEYUP,   VK_F11, 0);
@@ -1070,8 +1103,9 @@ static LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wParam, LPARAM lParam) 
                 // can retry it. Leaving it marked would hide it forever.
                 RemovePropW(r, PROP_MARK);
                 RemovePropW(r, PROP_TICK);
-                OnStateChanged();   // that window no longer counts
+                changed = true;
             }
+            if (changed) OnStateChanged();   // those windows no longer count
         }
         return 0;
 
@@ -1218,13 +1252,18 @@ static void CloseRunningInstance() {
 //      attached us but passed no inheritable handle.
 // Trying the inherited handle first matters: a redirecting parent sets it, and
 // losing it would silently drop the whole report into an invisible console.
-static HANDLE ConsoleOut() {
+// owned reports whether the returned handle was created here (CONOUT$) and
+// must be closed by the caller, versus an inherited/standard handle that is
+// borrowed and must be left alone.
+static HANDLE ConsoleOut(bool *owned) {
+    *owned = false;
     HANDLE h = GetStdHandle(STD_OUTPUT_HANDLE);
     if (h && h != INVALID_HANDLE_VALUE) return h;
     if (AttachConsole(ATTACH_PARENT_PROCESS)) {
         h = GetStdHandle(STD_OUTPUT_HANDLE);
         if (h && h != INVALID_HANDLE_VALUE) return h;
     }
+    *owned = true;
     return CreateFileW(L"CONOUT$", GENERIC_WRITE, FILE_SHARE_WRITE | FILE_SHARE_READ,
                        NULL, OPEN_EXISTING, 0, NULL);
 }
@@ -1233,17 +1272,26 @@ static HANDLE ConsoleOut() {
 // as UTF-8 to a pipe or a file. Returns false only when there is no output at
 // all, which is the caller's cue to fall back to a dialog.
 static bool Emit(const std::wstring &text) {
-    HANDLE out = ConsoleOut();
+    bool owned = false;
+    HANDLE out = ConsoleOut(&owned);
     if (!out || out == INVALID_HANDLE_VALUE) return false;
     DWORD n = 0;
-    if (WriteConsoleW(out, text.c_str(), (DWORD)text.size(), &n, NULL)) return true;
-    int need = WideCharToMultiByte(CP_UTF8, 0, text.c_str(), (int)text.size(),
-                                   NULL, 0, NULL, NULL);
-    if (need <= 0) return false;
-    std::string a((size_t)need, '\0');
-    WideCharToMultiByte(CP_UTF8, 0, text.c_str(), (int)text.size(),
-                        &a[0], need, NULL, NULL);
-    return WriteFile(out, a.data(), (DWORD)a.size(), &n, NULL) != 0;
+    bool ok;
+    if (WriteConsoleW(out, text.c_str(), (DWORD)text.size(), &n, NULL)) {
+        ok = true;
+    } else {
+        int need = WideCharToMultiByte(CP_UTF8, 0, text.c_str(), (int)text.size(),
+                                       NULL, 0, NULL, NULL);
+        if (need <= 0) ok = false;
+        else {
+            std::string a((size_t)need, '\0');
+            WideCharToMultiByte(CP_UTF8, 0, text.c_str(), (int)text.size(),
+                                &a[0], need, NULL, NULL);
+            ok = WriteFile(out, a.data(), (DWORD)a.size(), &n, NULL) != 0;
+        }
+    }
+    if (owned) CloseHandle(out);   // only the handle we created is ours to close
+    return ok;
 }
 
 // Text behind --help. Kept next to the parser so a new flag cannot be documented
@@ -1324,6 +1372,7 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, PWSTR, int) {
     // is the one behaviour a command-line tool must never have: "ExplorerF11
     // --cleen" would start a tray instance and appear to have done nothing.
     std::wstring badOption;
+    bool langNeedsValue = false;   // --lang appeared with no value after it
     int argc = 0;
     LPWSTR *argv = CommandLineToArgvW(GetCommandLineW(), &argc);
     if (argv) {
@@ -1342,7 +1391,10 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, PWSTR, int) {
                      _wcsicmp(argv[i], L"/?") == 0)            wantHelp = true;
             else if (_wcsicmp(argv[i], L"--version") == 0 ||
                      _wcsicmp(argv[i], L"-v") == 0)            wantVersion = true;
-            else if (_wcsicmp(argv[i], L"--lang") == 0 && i + 1 < argc) {
+            else if (_wcsicmp(argv[i], L"--lang") == 0 && i + 1 < argc &&
+                     argv[i + 1][0] && argv[i + 1][0] != L'-') {
+                // A following option is not a language tag: --lang --quiet is a
+                // missing value, not a request to parse "--quiet" as a locale.
                 Lang l;
                 if (ParseLang(argv[++i], &l)) { SetLang(l); g_langExplicit = true; }
                 else if (badOption.empty()) badOption = std::wstring(L"--lang ") + argv[i];
@@ -1350,6 +1402,10 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, PWSTR, int) {
                 Lang l;
                 if (ParseLang(argv[i] + 7, &l)) { SetLang(l); g_langExplicit = true; }
                 else if (badOption.empty()) badOption = argv[i];
+            } else if (_wcsicmp(argv[i], L"--lang") == 0) {
+                // Bare --lang with no following value: distinct from a typo.
+                if (badOption.empty()) badOption = L"--lang";
+                langNeedsValue = true;
             } else if (badOption.empty()) {
                 badOption = argv[i];
             }
@@ -1363,8 +1419,12 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, PWSTR, int) {
     if (!g_langExplicit) LoadLanguage();
 
     if (!badOption.empty()) {
-        std::wstring msg = T(L"未知选项：", L"Unknown option: ") + badOption + L"\n" +
-                           T(L"用 --help 查看全部选项。\n", L"Run --help for the full list.\n");
+        std::wstring msg;
+        if (langNeedsValue)
+            msg = T(L"--lang 缺少语言标签。\n", L"--lang requires a language tag.\n");
+        else
+            msg = T(L"未知选项：", L"Unknown option: ") + badOption + L"\n";
+        msg += T(L"用 --help 查看全部选项。\n", L"Run --help for the full list.\n");
         if (!Emit(msg)) Say(msg.c_str(), MB_ICONWARNING);
         return 2;
     }

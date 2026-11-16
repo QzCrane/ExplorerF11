@@ -80,15 +80,15 @@ Every release page lists a SHA-256 for the uploaded exe. Check it before running
 the binary:
 
 ```powershell
-Get-FileHash .\ExplorerF11-1.0.0-win64.exe -Algorithm SHA256
-(Get-Item .\ExplorerF11-1.0.0-win64.exe).VersionInfo.FileVersion   # 1.0.0.0
-.\ExplorerF11-1.0.0-win64.exe --version                            # ExplorerF11 1.0.0
+Get-FileHash .\ExplorerF11-1.0.1-win64.exe -Algorithm SHA256
+(Get-Item .\ExplorerF11-1.0.1-win64.exe).VersionInfo.FileVersion   # 1.0.1.0
+.\ExplorerF11-1.0.1-win64.exe --version                            # ExplorerF11 1.0.1
 ```
 
 To confirm the import table yourself:
 
 ```powershell
-dumpbin /imports .\ExplorerF11-1.0.0-win64.exe | Select-String "\.dll"
+dumpbin /imports .\ExplorerF11-1.0.1-win64.exe | Select-String "\.dll"
 ```
 
 **The binary is not code-signed.** Windows SmartScreen will therefore warn on

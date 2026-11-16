@@ -40,14 +40,14 @@ ExplorerF11 把它自动化：文件夹窗口出现、或者你在窗口里新�
 ## 下载
 
 [**最新发行版**](https://github.com/QzCrane/ExplorerF11/releases/latest)——
-`ExplorerF11-1.0.0-win64.exe`，366 KiB，x64。
+`ExplorerF11-1.0.1-win64.exe`，366 KiB，x64。
 
 - 单文件。没有安装程序、没有运行库、没有服务，不需要管理员权限。
 - 二进制**未做代码签名**，首次运行会触发 SmartScreen 警告。运行前请核对发行页
   上列出的 SHA-256：
 
   ```powershell
-  Get-FileHash .\ExplorerF11-1.0.0-win64.exe -Algorithm SHA256
+  Get-FileHash .\ExplorerF11-1.0.1-win64.exe -Algorithm SHA256
   ```
 
 - 每个发行版都从对应 tag 构建，发行说明里写明所用的工具链、SHA-256 与实测的

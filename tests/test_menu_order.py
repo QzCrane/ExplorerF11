@@ -248,7 +248,7 @@ check("无效 --lang 退出码 = 2", rc, 2)
 check_true("无效 --lang 写出整个参数", "--lang xx" in out, out.strip().splitlines()[0] if out else "")
 rc, out = run(["--lang"], "zh")
 check("--lang 缺少取值退出码 = 2", rc, 2)
-check_true("中文界面下用中文报告未知选项", "未知选项：" in out, out.strip().splitlines()[0] if out else "")
+check_true("中文界面下给出专门的缺值诊断", "缺少语言标签" in out, out.strip().splitlines()[0] if out else "")
 rc, out = run(["--version", "--quiet"])
 check("已知选项仍然退出 0", rc, 0)
 

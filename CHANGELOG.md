@@ -6,6 +6,45 @@ All notable changes to this project. Versions follow [SemVer](https://semver.org
 used while the tool was still being shaped; none of them was ever published, and
 they are kept below as build history rather than as releases.
 
+## 1.0.1 - 2026-11-16
+
+Patch release. Five defects found in a post-release audit, none of which CI or
+the existing suites covered; the shell-hook, recovery and console paths are
+exercised only by live OS events that a runner cannot drive deterministically.
+
+### Fixed
+
+- **Explorer restart could leave an orphan tray icon.** When Windows restarted
+  Explorer and re-registering the shell hook failed, the tool relaunched itself
+  (`RelaunchSelf` calls `DestroyWindow` synchronously) and then still added a
+  tray icon on the now-dead window handle — an icon that could never be clicked
+  or removed except by restarting Explorer again. The failure branch now returns
+  immediately; the fresh instance rebuilds the tray in its own `WM_CREATE`.
+- **One stuck fullscreen could hide another.** Partial F11 delivery was tracked
+  in a single `g_risk` slot with one timer, so a second failure within 500 ms
+  overwrote the first and left its window stuck in fullscreen. Recovery now
+  keeps a list of at-risk windows and processes them all.
+- **Recovery could poke or unmark the wrong window.** It trusted `IsWindow()`
+  alone; a handle recycled onto a different window in the 500 ms gap would be
+  sent F11 and have its marks removed. Each entry now carries the mark tick as
+  an identity token — a recycled or re-accelerated window fails the check and
+  is left untouched.
+- **`CONOUT$` handle leak.** `ConsoleOut()` created a console handle on the
+  third resolution path that was never closed. It now reports ownership and
+  `Emit()` closes only the handle it created.
+- **System shared icon could be destroyed.** The fallback icon from
+  `LoadIconW(NULL, IDI_APPLICATION)` is system-owned but `WM_DESTROY` destroyed
+  all icon handles unconditionally. The fallback now takes a private copy.
+- **A bare `--lang` was misreported or swallowed the next flag.** A trailing
+  `--lang` was called an unknown option, and `--lang --quiet` consumed `--quiet`
+  as a language tag. It now prints a dedicated "requires a language tag" message
+  in all five languages and never eats a following option.
+
+### Added
+
+- `tests/test_robustness.py`: 29 assertions covering all five fixes (source
+  contracts for the event-driven paths, a behavioural CLI check for `--lang`).
+
 ## 1.0.0 - 2026-11-16
 
 First release.

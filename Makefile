@@ -45,6 +45,7 @@ test: $(OUT)
 	python tests/test_icons.py
 	python tests/test_tray_cleanup.py
 	python tests/test_smoke.py
+	python tests/test_robustness.py
 
 # Regenerate the translation table after adding or editing a T() call.
 # tools/sync_i18n.py reports any key that still needs a translation.

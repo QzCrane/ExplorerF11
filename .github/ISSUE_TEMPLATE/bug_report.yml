@@ -18,7 +18,7 @@ body:
     attributes:
       label: ExplorerF11 version
       description: Output of `ExplorerF11.exe --version`.
-      placeholder: ExplorerF11 1.0.0
+      placeholder: ExplorerF11 1.0.1
     validations:
       required: true
 

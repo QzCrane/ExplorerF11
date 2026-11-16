@@ -48,7 +48,7 @@ If you move it after enabling autostart, tick the item again.
 Fixed five-part layout, top to bottom:
 
 ```
-ExplorerF11 1.0.0  ·  3 windows accelerated (5 tabs)   <- grey, not clickable
+ExplorerF11 1.0.1  ·  3 windows accelerated (5 tabs)   <- grey, not clickable
 ────────────────────────────
 Apply to all open windows
 Apply to the active window
@@ -109,7 +109,7 @@ nothing to translate in your head.
 saying where the numbers come from:
 
 ```
-ExplorerF11 1.0.0 - residue report
+ExplorerF11 1.0.1 - residue report
 program: D:\Tools\ExplorerF11.exe
 time:    2026-11-15 11:20:31 (local) - UI language: English
 scope:   11 possible locations in 3 groups; every one is listed below with its

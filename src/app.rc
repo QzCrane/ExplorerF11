@@ -29,12 +29,12 @@ BEGIN
         BEGIN
             VALUE "CompanyName",      "ExplorerF11"
             VALUE "FileDescription",  "ExplorerF11 - instant Explorer acceleration"
-            VALUE "FileVersion",      "1.0.0.0"
+            VALUE "FileVersion",      "1.0.1.0"
             VALUE "InternalName",     "ExplorerF11"
             VALUE "LegalCopyright",   "MIT License"
             VALUE "OriginalFilename", "ExplorerF11.exe"
             VALUE "ProductName",      "ExplorerF11"
-            VALUE "ProductVersion",   "1.0.0.0"
+            VALUE "ProductVersion",   "1.0.1.0"
         END
     END
     BLOCK "VarFileInfo"
