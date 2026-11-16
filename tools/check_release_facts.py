@@ -42,6 +42,29 @@ def contains(name, rel, needle):
     check(name, needle in read(rel), needle)
 
 
+# Prose spells small numbers out ("Fourteen gates: five static checks..."), and
+# that sentence is asserted, so the spelling has to be derived rather than
+# hand-listed. The previous map knew 12 and 13 only, which meant adding one gate
+# silently changed the required sentence to "14 gates" and failed the docs.
+_ONES = ("zero", "one", "two", "three", "four", "five", "six", "seven", "eight",
+         "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen",
+         "sixteen", "seventeen", "eighteen", "nineteen")
+_TENS = ("", "", "twenty", "thirty", "forty", "fifty")
+
+
+def word(n):
+    """1 -> 'One', 21 -> 'Twenty-one'; falls back to digits above 59."""
+    if n < 0:
+        return str(n)
+    if n < 20:
+        text = _ONES[n]
+    elif n < 60:
+        text = _TENS[n // 10] + ("-" + _ONES[n % 10] if n % 10 else "")
+    else:
+        return str(n)
+    return text[0].upper() + text[1:]
+
+
 def absent(name, rel, pattern):
     text = read(rel)
     m = re.search(pattern, text, re.I)
@@ -65,7 +88,12 @@ ci = read(".github/workflows/build.yml")
 contains("CI smoke 断言当前版本", ".github/workflows/build.yml",
          'findstr /C:"ExplorerF11 %s"' % F.VERSION)
 absent("CI 不含 /std:c++17", ".github/workflows/build.yml", r"/std:c\+\+17\b")
-contains("CI 使用 MSVC 最新标准开关", ".github/workflows/build.yml", F.MSVC_FLAG)
+# CI no longer repeats the compiler command line: it calls the build script, so
+# the MSVC standard is asserted where it is defined (build.bat, below) and CI is
+# asserted to take that path. The old check looked for /std:c++latest inside the
+# workflow, which duplicated the flag and let the two copies drift.
+contains("CI 通过 build.bat 走 MSVC", ".github/workflows/build.yml",
+         "call build.bat msvc")
 
 print("\n==== 2. 构建标准 ====")
 for rel in ("Makefile", "build.bat"):
@@ -107,7 +135,9 @@ for rel in F.CURRENT_FILES:
     for token in (r"367 KiB", r"366 KiB", r"2\.3 MB", r"156 handles",
                   r"319 assertions", r"295 assertions", r"12 gates",
                   r"twelve gates", r"12 道闸门", r"three static checks",
-                  r"3 项静态检查", r"-std=c\+\+17", r"/std:c\+\+17"):
+                  r"3 项静态检查", r"13 gates", r"thirteen gates",
+                  r"13 道闸门", r"four static checks", r"4 项静态检查",
+                  r"-std=c\+\+17", r"/std:c\+\+17"):
         absent("%s 无陈旧标记 %s" % (rel, token), rel, token)
 
 contains("README 资产名", "README.md", F.ASSET)
@@ -121,16 +151,15 @@ contains("PR 模板闸门行", ".github/PULL_REQUEST_TEMPLATE.md",
          (F.GATES, F.STATIC_CHECKS, F.SUITES, F.ASSERTIONS))
 contains("CONTRIBUTING 闸门构成", "CONTRIBUTING.md",
          "%s gates: %s static checks plus %s suites" %
-         (("Thirteen", "four", "nine") if F.GATES == 13 else ("Twelve", "three", "nine")))
+         (word(F.GATES), word(F.STATIC_CHECKS).lower(), word(F.SUITES).lower()))
 contains("ARCHITECTURE 资源表", "docs/ARCHITECTURE.md",
          "| Disk | %d KiB |" % F.SIZE_KIB)
-GATE_WORD = {12: "Twelve", 13: "Thirteen"}.get(F.GATES, str(F.GATES))
 check("ARCHITECTURE 闸门/断言",
       ("%d gates, %d assertions" % (F.GATES, F.ASSERTIONS)) in read("docs/ARCHITECTURE.md")
-      or ("%s gates, %d assertions" % (GATE_WORD, F.ASSERTIONS)) in read("docs/ARCHITECTURE.md"))
+      or ("%s gates, %d assertions" % (word(F.GATES), F.ASSERTIONS)) in read("docs/ARCHITECTURE.md"))
 check("RELEASING 闸门数",
       ("%d gates in this order" % F.GATES) in read("docs/RELEASING.md")
-      or ("%s gates in this order" % GATE_WORD.lower()) in read("docs/RELEASING.md"))
+      or ("%s gates in this order" % word(F.GATES).lower()) in read("docs/RELEASING.md"))
 contains("RELEASING checksum 名称", "docs/RELEASING.md", F.CHECKSUM)
 contains("SECURITY 资产名", "SECURITY.md", F.ASSET)
 contains("SECURITY checksum 名称", "SECURITY.md", F.CHECKSUM)
@@ -161,11 +190,20 @@ print("\n==== 6. 全仓库版本号残留 ====")
 SKIP_DIRS = {".git", ".workbuddy", ".workbuddy-ai", "dist", "__pycache__", ".pytest_cache"}
 TEXT_EXT = (".md", ".yml", ".yaml", ".py", ".json", ".cpp", ".h", ".rc", ".txt",
             ".bat", ".ps1", ".cfg", ".toml")
+NOTES_DIR = os.path.normcase(os.path.join(ROOT, "docs", "release-notes"))
 stale_hits = []
 for dirpath, dirnames, filenames in os.walk(ROOT):
     dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
     for name in filenames:
         if name == "CHANGELOG.md":
+            continue
+        # Archived release notes are history, exactly like the CHANGELOG: each
+        # one describes the build its own version shipped. Without this, the
+        # first bump to 1.0.5 turns the gate red on 1.0.4's archived notes -
+        # which cannot be "fixed", because that release did say 1.0.4. Only the
+        # current version's note is still a live claim.
+        if (os.path.normcase(dirpath) == NOTES_DIR and name.endswith(".md")
+                and name[:-3] != F.VERSION):
             continue
         if not (name.endswith(TEXT_EXT) or name in ("Makefile", ".editorconfig", ".gitattributes")):
             continue
@@ -179,7 +217,10 @@ for dirpath, dirnames, filenames in os.walk(ROOT):
         for m in re.finditer(r"ExplorerF11[ -](\d+\.\d+\.\d+)", text):
             if m.group(1) != F.VERSION:
                 stale_hits.append("%s: %s" % (rel, m.group(0)))
-check("无其他文件引用旧版本号", not stale_hits, "; ".join(stale_hits[:3]))
+# Report the count as well: three sample hits used to be the whole message, so a
+# run with fifteen stale references looked like a run with three.
+check("无其他文件引用旧版本号", not stale_hits,
+      ("%d hit(s): " % len(stale_hits) + "; ".join(stale_hits[:3])) if stale_hits else "")
 
 print("\n==== 7. 签名状态 ====")
 # Whether the binary is signed is a published fact, and the documents make a

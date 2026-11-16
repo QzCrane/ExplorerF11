@@ -293,8 +293,17 @@ if downloaded is not None:
 print("==== 4. 正文事实 ====")
 check("正文含版本号", F.VERSION in body, F.VERSION)
 check("正文含资产名", F.ASSET in body, F.ASSET)
-check("正文含断言数 %d" % F.ASSERTIONS, str(F.ASSERTIONS) in body)
-check("正文含闸门数 %d" % F.GATES, re.search(r"\b%d gates\b" % F.GATES, body) is not None)
+# The assertion and gate counts describe the released build, and they are the
+# two numbers that legitimately move after a tag: adding a gate, or one more
+# assertion to a suite, changes HEAD's facts while the published body still
+# correctly describes the build it shipped. Comparing them against HEAD is what
+# made this gate unusable between releases. The archived notes are the frozen
+# copy of those numbers - section 2 already requires the archive to be
+# byte-identical to the body - so they are only checked here when no archive
+# exists and the facts file is the only remaining witness.
+if not os.path.exists(notes_path):
+    check("正文含断言数 %d" % F.ASSERTIONS, str(F.ASSERTIONS) in body)
+    check("正文含闸门数 %d" % F.GATES, re.search(r"\b%d gates\b" % F.GATES, body) is not None)
 for stale in ("1808", "10352", "366 KiB", "367 KiB", "410 KiB", "372 KiB",
               "135 handles", "1.76 MB"):
     check("正文无陈旧数字 " + stale, stale not in body,

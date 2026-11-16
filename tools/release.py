@@ -36,6 +36,7 @@ Exit codes: 0 published and verified, 1 a stage failed (the log names it),
 
 import argparse
 import datetime
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import importlib
 import json
@@ -57,7 +58,7 @@ STAGES = (
     "build",       # make -B, measure the artefact
     "sign",        # optional Authenticode signing, before anything is measured
     "facts",       # refresh release_facts.py + measurement.json from this build
-    "gates",       # make test - all thirteen, on this exact tree
+    "gates",       # make test - all fourteen, on this exact tree
     "screenshots", # documentation captures; they carry the version in a header
     "notes",       # render the body from this build's numbers, verify it
     "commit",      # commit anything the stages above changed
@@ -240,7 +241,22 @@ def stage_preflight(cfg):
     if dirty:
         raise Fail("working tree is not clean; commit or stash first:\n" + dirty)
 
-    run(["git", "fetch", "origin", "--tags", "--prune"], quiet=True)
+    # Three read-only round trips that do not depend on each other: fetching the
+    # refs (1.2 s), listing the remote's tags (1.0 s) and asking gh who we are
+    # (0.9 s). Serially they were 3.1 s of the 12.6 s rehearsal; overlapped, the
+    # cost is the slowest one. `git fetch` also writes refs, so its result is
+    # awaited before anything reads HEAD or a local tag.
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        fetched = pool.submit(run, ["git", "fetch", "origin", "--tags", "--prune"],
+                              quiet=True)
+        remote = pool.submit(run, ["git", "ls-remote", "--tags", "origin"],
+                             quiet=True)
+        auth = pool.submit(run, ["gh", "auth", "status"], check=False, quiet=True)
+        fetched.result()
+        remote_listing = remote.result().stdout if remote.result().returncode == 0 else None
+        if auth.result().returncode != 0:
+            raise Fail("gh is not authenticated; `gh auth login` first")
+
     head = git_out("rev-parse", "HEAD")
     upstream = git_out("rev-parse", "origin/main")
     if head != upstream:
@@ -288,7 +304,7 @@ def stage_preflight(cfg):
                        "once. (A --dry-run may reuse it to rehearse.)"
                        % (cfg.version, newest))
     for where, exists in (("local", _tag_exists_local(cfg.tag)),
-                          ("remote", _tag_exists_remote(cfg.tag))):
+                          ("remote", _tag_exists_remote(cfg.tag, remote_listing))):
         if exists:
             if cfg.dry_run:
                 note("WARNING: tag %s already exists %s; dry run continues"
@@ -296,11 +312,6 @@ def stage_preflight(cfg):
             else:
                 raise Fail("tag %s already exists %s; a version is used once"
                            % (cfg.tag, where))
-
-    if shutil.which("gh"):
-        auth = run(["gh", "auth", "status"], check=False, quiet=True)
-        if auth.returncode != 0:
-            raise Fail("gh is not authenticated; `gh auth login` first")
 
     note("version %s, notes source %s" % (cfg.version, cfg.notes_src))
 
@@ -463,6 +474,13 @@ def stage_notes(cfg):
     if problems:
         raise Fail("%s does not describe this build:\n  - %s"
                    % (cfg.notes_src, "\n  - ".join(problems)))
+
+    if cfg.dry_run:
+        # The rendered body is an input to `publish`, which a rehearsal never
+        # reaches. Writing it anyway left a stale copy in dist/ that the next
+        # rehearsal could pick up as if it were this build's text.
+        note("dry run: body rendered and verified, not written to dist/")
+        return
 
     os.makedirs(os.path.dirname(cfg.notes_out), exist_ok=True)
     with open(cfg.notes_out, "w", encoding="utf-8", newline="\n") as fh:
@@ -717,7 +735,12 @@ def _tag_exists_local(tag):
                check=False, quiet=True).returncode == 0
 
 
-def _tag_exists_remote(tag):
+def _tag_exists_remote(tag, listing=None):
+    """Is the tag on origin? `listing` is a prefetched `ls-remote --tags` output;
+    pass it when the caller has already paid for the round trip."""
+    if listing is not None:
+        return re.search(r"(?m)^\S+\s+refs/tags/%s(\^\{\})?$" % re.escape(tag),
+                         listing) is not None
     out = run(["git", "ls-remote", "--tags", "origin", "refs/tags/" + tag],
               check=False, quiet=True).stdout
     return bool(out.strip())

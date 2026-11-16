@@ -6,6 +6,18 @@ on:
   pull_request:
   workflow_dispatch:
 
+# This job only reads the repository; it never writes a ref, a release or a
+# package. The default token can do all three, so it is narrowed here.
+permissions:
+  contents: read
+
+# A pull request that is pushed twice only needs its newest run. Runs on main
+# are never cancelled: `release.py` waits for the run on one exact commit, and
+# cancelling it would leave the release waiting for a result that cannot come.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   windows:
     runs-on: windows-latest
@@ -22,30 +34,27 @@ jobs:
 
       - name: Build
         shell: cmd
+        # One definition of the compiler command line, in build.bat, which is
+        # also what CONTRIBUTING tells a contributor to run. The workflow used
+        # to carry its own copy: it was missing /GL and /LTCG, so the MSVC path
+        # proved here was not the MSVC path the build script produced.
         run: |
-          if not exist dist mkdir dist
-          rc /nologo /I src /fo dist\app.res src\app.rc
-          if errorlevel 1 exit /b 1
-          rem /utf-8 is mandatory: the sources are UTF-8 without a BOM and carry
-          rem CJK wide literals. Without it cl decodes them with the ANSI code
-          rem page and the Japanese and Korean strings turn into mojibake.
-          cl /nologo /std:c++latest /utf-8 /EHsc /W4 /O2 /DNDEBUG ^
-             src\main.cpp src\config.cpp src\residue.cpp src\i18n_extra.cpp dist\app.res ^
-             /Fo:dist\ /Fe:dist\ExplorerF11.exe ^
-             /link /SUBSYSTEM:WINDOWS
+          call build.bat msvc
           if errorlevel 1 exit /b 1
 
-      - name: Guard the translation table
+      - name: Static checks
         run: |
           python tools/check_i18n.py
           python tools/audit_i18n.py
           python tools/check_help_align.py
           python tools/check_release_facts.py
+          python tools/check_gate_inventory.py
 
       - name: Test the CLI surface
         run: |
           python tests/test_lang_names.py
           python tests/test_menu_order.py
+          python tests/test_tray_cleanup.py
           python tests/test_robustness.py
 
       - name: Smoke test the binary

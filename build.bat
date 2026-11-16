@@ -1,18 +1,28 @@
 @echo off
 rem Build ExplorerF11. Produces dist\ExplorerF11.exe.
 rem
-rem   build.bat            release build
+rem   build.bat            release build, whichever compiler is on PATH
 rem   build.bat debug      symbols, console window for stderr
+rem   build.bat msvc       release build, cl.exe only (CI uses this)
+rem   build.bat mingw      release build, g++ only
 rem
 rem Uses MSVC if it is on PATH, otherwise MinGW-w64 g++. Both produce a single
-rem self-contained exe with no runtime dependency.
+rem self-contained exe with no runtime dependency. CI calls this script rather
+rem than repeating the compiler command line, so the flags proved on every push
+rem are the flags this file documents - there is no second copy to drift.
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
 
 set MODE=%1
+set FORCE=auto
+if /i "%MODE%"=="msvc" (set FORCE=msvc & set MODE=release)
+if /i "%MODE%"=="mingw" (set FORCE=mingw & set MODE=release)
 if "%MODE%"=="" set MODE=release
 
 if not exist dist mkdir dist
+
+if /i "%FORCE%"=="msvc" goto msvc
+if /i "%FORCE%"=="mingw" goto mingw
 
 where g++ >nul 2>&1
 if not errorlevel 1 goto mingw
