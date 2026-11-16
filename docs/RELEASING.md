@@ -4,6 +4,36 @@ A release is a tagged commit, a binary built from that commit, and a checksum
 published alongside it. Once an artefact is public it cannot be corrected in
 place — only superseded — so the checks below happen before the tag, not after.
 
+## 0. One source of truth for the numbers
+
+`tools/release_facts.py` is the only authoritative copy of every number that
+appears in more than one place: version, asset name, checksum filename, gate and
+assertion counts, binary size and resource ceilings. `tools/measurement.json`
+holds the raw sample behind each measured value. Four tools keep the two in step
+with reality:
+
+| Command | Role |
+|---|---|
+| `python tools/bump_version.py X.Y.Z` | rewrite every version-derived string, seed the new CHANGELOG entry |
+| `make -B` | rebuild the release exe |
+| `make refresh-facts` | re-run all gates, re-measure, rewrite facts and manifest, then verify consistency |
+| `python tools/check_release_facts.py` | gate: fail if any current document or build file disagrees with the facts |
+
+Never hand-edit a version, filename, gate count or measured figure in a
+document. Edit the source of truth, refresh, and commit all three together.
+Historical CHANGELOG sections are exempt: they describe the binaries of their
+day, and the gate deliberately leaves them alone.
+
+The checksum file is named `SHA256SUMS.txt`. GNU `sha256sum` does not prescribe
+a manifest filename — `sha256sum -c` accepts any name — it prescribes the line
+format: `digest`, one separator space, one mode flag (`' '` text or `'*'`
+binary), then the filename. `SHA256SUMS.txt` follows the Debian/kernel
+`SHA256SUMS` convention with a `.txt` suffix so Windows users can open it;
+`sha256sum -c SHA256SUMS.txt` works unchanged. Do **not** name the file after
+the digest: that is content-addressed storage, where a resolver maps hash to
+content, and offers no benefit on a release page where the digest must be
+paired with a readable asset name.
+
 Versions follow [SemVer](https://semver.org/): `MAJOR.MINOR.PATCH`. The tool has
 no API, so the practical reading is:
 
@@ -36,13 +66,14 @@ version too. Historical entries and the release procedure's examples do not.
 ## 2. Clear the gates
 
 Every gate must pass on the exact commit that will be tagged. `make test` runs
-twelve gates in this order:
+thirteen gates in this order:
 
 | Gate | What it proves |
 |---|---|
 | `tools/check_i18n.py` | every `T()` key exists in all five languages, placeholders match, the generated table is current |
 | `tools/audit_i18n.py` | wrong script, ASCII punctuation glued to CJK, mixed bracket styles, terminology drift |
 | `tools/check_help_align.py` | the `--help` option column starts at the same offset in all five languages |
+| `tools/check_release_facts.py` | every release-facing number matches `tools/release_facts.py` and `tools/measurement.json` |
 | `tests/test_lang_names.py` | five language rows identical in every UI language; each report header names the active language |
 | `tests/test_menu_order.py` | menu structure, language radio, localised bodies, counting unit, unknown-option handling |
 | `tests/test_residue_report.py` | report structure and wording in all five languages |
@@ -53,7 +84,7 @@ twelve gates in this order:
 | `tests/test_smoke.py` | event path end to end on a real Explorer window, resource ceilings |
 | `tests/test_robustness.py` | source contracts for the event-driven fixes; behavioural CLI checks |
 
-Three are static checks; nine drive the built exe, so build first.
+Four are static checks; nine drive the built exe, so build first.
 `test_smoke.py` opens and closes a real folder window and needs a desktop
 session, not a service account.
 
@@ -114,6 +145,16 @@ git push origin vX.Y.Z
 ```
 
 The tag is `v` plus the SemVer number; the release title is `ExplorerF11 X.Y.Z`.
+Repository topics live outside git and are named separately:
+
+```sh
+gh api -X PUT repos/QzCrane/ExplorerF11/topics \
+  -f 'names[]=cpp' -f 'names[]=cpp23' -f 'names[]=file-explorer' \
+  -f 'names[]=i18n' -f 'names[]=mingw-w64' -f 'names[]=performance' \
+  -f 'names[]=shell-hook' -f 'names[]=tray-icon' \
+  -f 'names[]=win32' -f 'names[]=windows-11'
+```
+
 The workflow listens on `push` to `main` only, so pushing a tag does not start a
 second run. The main-branch run on the tagged commit is the gate: confirm it is
 green before publishing the release itself.

@@ -265,11 +265,11 @@ shortly after start-up:
 
 | | Measured | Notes |
 |---|---|---|
-| Private bytes | 1.87 MB | no CRT heap growth after start-up |
+| Private bytes | under 2 MB | no CRT heap growth after start-up |
 | Handles | 135 | window, hooks, tray icon, mutex and thread pool |
 | Threads | 4 transient, 1 settled | three `TpWorkerFactory` helpers exit after roughly 45 s idle |
 | CPU | 0.03 s cumulative / 2 min | start-up cost; steady state is blocked in `GetMessageW` |
-| Disk | 367 KiB | static CRT, `-Os`, stripped; 60 KB is the two icon resources |
+| Disk | 370 KiB | static CRT, `-Os`, stripped; 60 KB is the two icon resources |
 
 The binary imports `KERNEL32`, `USER32`, `GDI32`, `SHELL32`, `ADVAPI32` and
 `msvcrt` — no networking library, no scripting host, no dynamic code loading.
@@ -283,7 +283,7 @@ including submenus as indented rows, so the layout test cannot drift from the UI
 Every suite restores the state it changed, including autostart and the stored
 language; the clean test only ever answers *No* to the confirmation.
 
-Twelve gates, 323 assertions, each returning non-zero on failure:
+Thirteen gates, 323 assertions, each returning non-zero on failure:
 
 | Gate | Proves |
 |---|---|

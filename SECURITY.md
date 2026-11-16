@@ -75,13 +75,22 @@ best-effort basis, usually within a week; there is no bug bounty.
 
 ## Verifying a release
 
-Every release page publishes a SHA-256 for the uploaded exe. Check it before
-running the file:
+Every release page attaches `SHA256SUMS.txt` alongside the exe. It is a GNU
+`sha256sum` check-file: one line of `digest␠␠filename`, where the second space is
+the text-mode flag, not padding. The filename itself is a convention with no
+meaning to the tool — `sha256sum -c` reads any filename. What matters is that
+the digest is paired with the asset name in the file *content*. On Windows:
 
 ```powershell
 Get-FileHash .\ExplorerF11-1.0.2-win64.exe -Algorithm SHA256
 (Get-Item .\ExplorerF11-1.0.2-win64.exe).VersionInfo.FileVersion   # 1.0.2.0
 .\ExplorerF11-1.0.2-win64.exe --version                            # ExplorerF11 1.0.2
+```
+
+With Git Bash or a GNU userland, verify the whole manifest instead:
+
+```sh
+sha256sum -c SHA256SUMS.txt
 ```
 
 The import table can be checked independently:

@@ -33,10 +33,13 @@ debug: CXXFLAGS := -std=c++23 -O0 -g -Wall -Wextra -municode -D_DEBUG
 debug: LDFLAGS  := -municode -static -static-libgcc -static-libstdc++
 debug: clean $(OUT)
 
+.PHONY: refresh-facts
+
 test: $(OUT)
 	python tools/check_i18n.py
 	python tools/audit_i18n.py
 	python tools/check_help_align.py
+	python tools/check_release_facts.py
 	python tests/test_lang_names.py
 	python tests/test_menu_order.py
 	python tests/test_residue_report.py
@@ -51,6 +54,12 @@ test: $(OUT)
 # tools/sync_i18n.py reports any key that still needs a translation.
 i18n:
 	python tools/sync_i18n.py
+
+# Re-derive release_facts.py and measurement.json from src/app.h, the test
+# recipe, the built exe and a full test run. Run this after changing a gate or
+# rebuilding; never edit the facts by hand.
+refresh-facts:
+	python tools/refresh_facts.py
 
 clean:
 	rm -rf dist

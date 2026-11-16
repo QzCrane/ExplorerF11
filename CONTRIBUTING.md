@@ -32,7 +32,7 @@ Then:
 make test
 ```
 
-Twelve gates: three static checks plus nine suites that drive the built binary.
+Thirteen gates: four static checks plus nine suites that drive the built binary.
 The suite needs the exe, so build first. `test_smoke.py` opens a real folder
 window and requires a desktop session.
 
@@ -124,4 +124,4 @@ For anything security-related, use the private channel in
 ## Releasing
 
 [docs/RELEASING.md](docs/RELEASING.md) lists the files carrying the version, the
-twelve gates and the build/verification/publication sequence.
+thirteen gates and the build/verification/publication sequence.

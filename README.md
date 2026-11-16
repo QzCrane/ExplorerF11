@@ -10,7 +10,7 @@
 ![platform](https://img.shields.io/badge/platform-Windows%2011%20x64-0078D4)
 
 A tray utility that sends an F11 round trip to newly opened Windows 11 Explorer
-windows. Event-driven, one unsigned 367 KiB executable, no registry writes under
+windows. Event-driven, one unsigned 370 KiB executable, no registry writes under
 the default configuration. [中文说明](README.zh-CN.md).
 
 <p align="center">
@@ -30,7 +30,7 @@ Four details define what the tool is:
 
 - **No polling.** A shell hook reports top-level window creation; a WinEvent hook
   reports tab creation and restore-from-minimised. Idle time is spent blocked in
-  `GetMessageW`: 1.87 MB private, 135 handles, 0.03 s cumulative CPU over two
+  `GetMessageW`: under 2 MB private, 135 handles, 0.03 s cumulative CPU over two
   minutes on the test machine.
 - **No injection, no focus theft.** `PostMessageW` delivers key messages without
   touching the foreground window or the real keyboard state. There is no DLL
@@ -159,7 +159,7 @@ make test
 ```
 
 Plain C++23 and Win32; the only imported libraries are `user32`, `shell32` and
-`advapi32`. `make test` runs 12 gates — three static checks over sources and
+`advapi32`. `make test` runs 13 gates — four static checks over sources and
 translations, nine suites that drive the built binary rather than a mock — for
 323 assertions. Smoke tests open a real folder window and need a desktop session.
 One gate (`tests/test_robustness.py`) pins the event-driven and CLI fixes that a

@@ -40,6 +40,7 @@ jobs:
           python tools/check_i18n.py
           python tools/audit_i18n.py
           python tools/check_help_align.py
+          python tools/check_release_facts.py
 
       - name: Test the CLI surface
         run: |

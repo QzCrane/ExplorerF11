@@ -37,6 +37,17 @@ compilation baseline from C++17 to C++23. No documented behaviour changes.
 - The 1.0.1 Release body was rewritten: it had been a verbatim copy of the 1.0.0
   text, with stale filenames, checksums and gate counts. Release verification
   now reads the published body back before a version is called done.
+- Version-derived numbers now come from `tools/release_facts.py`. A new gate,
+  `tools/check_release_facts.py`, fails the build when any current document
+  disagrees; `make refresh-facts` re-derives the facts from the source, the
+  built exe and a full test run. A version bump is `python
+  tools/bump_version.py X.Y.Z`, not a search-and-replace across a dozen files.
+
+### Measured
+
+The C++23 binary is 370 KiB (378,368 bytes); the sampled resource profile is
+unchanged at 135 handles, four transient threads settling to one, and under
+2 MB private. The 1.0.1 figures below describe that build, not a regression.
 
 ## 1.0.1 - 2026-11-16
 
