@@ -21,11 +21,25 @@ jobs:
           if not exist dist mkdir dist
           rc /nologo /I src /fo dist\app.res src\app.rc
           if errorlevel 1 exit /b 1
-          cl /nologo /std:c++17 /EHsc /W4 /O2 /DNDEBUG ^
-             src\main.cpp src\config.cpp src\footprint.cpp dist\app.res ^
+          rem /utf-8 is mandatory: the sources are UTF-8 without a BOM and carry
+          rem CJK wide literals. Without it cl decodes them with the ANSI code
+          rem page and the Japanese and Korean strings turn into mojibake.
+          cl /nologo /std:c++17 /utf-8 /EHsc /W4 /O2 /DNDEBUG ^
+             src\main.cpp src\config.cpp src\residue.cpp src\i18n_extra.cpp dist\app.res ^
              /Fo:dist\ /Fe:dist\ExplorerF11.exe ^
              /link /SUBSYSTEM:WINDOWS
           if errorlevel 1 exit /b 1
+
+      - name: Guard the translation table
+        run: |
+          python tools/check_i18n.py
+          python tools/audit_i18n.py
+          python tools/check_help_align.py
+
+      - name: Test the CLI surface
+        run: |
+          python tests/test_lang_names.py
+          python tests/test_menu_order.py
 
       - name: Smoke test the binary
         shell: cmd
@@ -37,7 +51,7 @@ jobs:
           rem encoding cannot influence the result.
           dist\ExplorerF11.exe --version --quiet > dist\version.txt 2>&1
           type dist\version.txt
-          findstr /C:"ExplorerF11 6.2.0" dist\version.txt >nul || exit /b 1
+          findstr /C:"ExplorerF11 1.0.0" dist\version.txt >nul || exit /b 1
 
           dist\ExplorerF11.exe --help --quiet > dist\help.txt 2>&1
           findstr /C:"--status" dist\help.txt >nul || exit /b 1
@@ -47,15 +61,22 @@ jobs:
           dist\ExplorerF11.exe --menu --lang en --quiet > dist\menu-en.txt 2>&1
           type dist\menu-en.txt
           findstr /C:"Language" dist\menu-en.txt >nul || exit /b 1
+          findstr /C:"Residue report" dist\menu-en.txt >nul || exit /b 1
           rem The per-tab wording was retired in 6.1.1; it must not come back.
           findstr /C:"Re-accelerate the window on new tabs" dist\menu-en.txt >nul || exit /b 1
+          rem The five languages must all be selectable, and each name is the
+          rem endonym from i18n.h: LangName(), identical in every UI language.
+          findstr /C:"简体中文" dist\menu-en.txt >nul || exit /b 1
+          findstr /C:"繁體中文" dist\menu-en.txt >nul || exit /b 1
+          findstr /C:"日本語" dist\menu-en.txt >nul || exit /b 1
+          findstr /C:"한국어" dist\menu-en.txt >nul || exit /b 1
 
           rem The Chinese dump must not carry the English labels; that absence is
           rem what proves --lang really re-localised the menu.
           dist\ExplorerF11.exe --menu --lang zh --quiet > dist\menu-zh.txt 2>&1
           findstr /C:"Start with Windows" dist\menu-zh.txt >nul && exit /b 1
 
-          rem --status exits 1 when the machine has traces, which a fresh runner
+          rem --status exits 1 when the machine has residues, which a fresh runner
           rem usually does. Only the report body is asserted, not the exit code.
           dist\ExplorerF11.exe --status --lang en --quiet > dist\status.txt 2>&1
           type dist\status.txt

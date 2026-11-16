@@ -10,7 +10,7 @@
 CXX      ?= g++
 WINDRES  ?=
 OUT      := dist/ExplorerF11.exe
-SRC      := src/main.cpp src/config.cpp src/footprint.cpp
+SRC      := src/main.cpp src/config.cpp src/residue.cpp src/i18n_extra.cpp
 RC       := src/app.rc
 ICONS    := src/ExplorerF11.ico src/ExplorerF11-paused.ico
 DEP      := $(wildcard src/*.h)
@@ -20,7 +20,7 @@ CXXFLAGS += -municode
 LDFLAGS  += -mwindows -static -static-libgcc -static-libstdc++ -s
 LDLIBS   := -luser32 -lshell32 -ladvapi32
 
-.PHONY: all debug test clean
+.PHONY: all debug test i18n clean
 
 all: $(OUT)
 
@@ -34,13 +34,22 @@ debug: LDFLAGS  := -municode -static -static-libgcc -static-libstdc++
 debug: clean $(OUT)
 
 test: $(OUT)
+	python tools/check_i18n.py
+	python tools/audit_i18n.py
+	python tools/check_help_align.py
+	python tests/test_lang_names.py
 	python tests/test_menu_order.py
-	python tests/test_footprint_report.py
+	python tests/test_residue_report.py
 	python tests/test_registry_policy.py
 	python tests/test_language.py
 	python tests/test_icons.py
 	python tests/test_tray_cleanup.py
 	python tests/test_smoke.py
+
+# Regenerate the translation table after adding or editing a T() call.
+# tools/sync_i18n.py reports any key that still needs a translation.
+i18n:
+	python tools/sync_i18n.py
 
 clean:
 	rm -rf dist

@@ -21,6 +21,7 @@ _*.png
 
 # WorkBuddy workspace data (never part of the project)
 .workbuddy/
+.workbuddy-ai/
 
 # Editors
 .vs/

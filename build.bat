@@ -26,7 +26,7 @@ exit /b 1
 
 :mingw
 echo [build] MinGW-w64 g++ (%MODE%)
-set SRC=src\main.cpp src\config.cpp src\footprint.cpp src\app.rc
+set SRC=src\main.cpp src\config.cpp src\residue.cpp src\i18n_extra.cpp src\app.rc
 if /i "%MODE%"=="debug" (
     g++ -std=c++17 -O0 -g -municode -Wall -Wextra %SRC% -o dist\ExplorerF11.exe ^
         -luser32 -lshell32 -ladvapi32
@@ -45,13 +45,17 @@ rem object first, then the linker takes it as one more input. Skip this step and
 rem the exe ends up with no icon and no version block.
 rc /nologo /I src /fo dist\app.res src\app.rc
 if errorlevel 1 exit /b 1
+rem /utf-8 is mandatory, not cosmetic: the sources are UTF-8 without a BOM and
+rem carry CJK wide literals. Without it cl decodes them with the system ANSI
+rem code page, so a Japanese string compiles correctly only on a Japanese
+rem machine and turns to mojibake everywhere else.
 if /i "%MODE%"=="debug" (
-    cl /nologo /std:c++17 /EHsc /W4 /Zi /Od /D_DEBUG ^
-       src\main.cpp src\config.cpp src\footprint.cpp dist\app.res ^
+    cl /nologo /std:c++17 /utf-8 /EHsc /W4 /Zi /Od /D_DEBUG ^
+       src\main.cpp src\config.cpp src\residue.cpp src\i18n_extra.cpp dist\app.res ^
        /Fo:dist\ /Fe:dist\ExplorerF11.exe /link /SUBSYSTEM:CONSOLE
 ) else (
-    cl /nologo /std:c++17 /EHsc /W4 /O2 /GL /DNDEBUG ^
-       src\main.cpp src\config.cpp src\footprint.cpp dist\app.res ^
+    cl /nologo /std:c++17 /utf-8 /EHsc /W4 /O2 /GL /DNDEBUG ^
+       src\main.cpp src\config.cpp src\residue.cpp src\i18n_extra.cpp dist\app.res ^
        /Fo:dist\ /Fe:dist\ExplorerF11.exe /link /SUBSYSTEM:WINDOWS /LTCG
 )
 if errorlevel 1 exit /b 1
