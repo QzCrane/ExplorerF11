@@ -183,7 +183,7 @@ code, tag_commit, err = git("rev-parse", TAG + "^{commit}")
 check("本地存在标签 " + TAG, code == 0, tag_commit[:7] if code == 0 else err)
 code, _, _ = git("merge-base", "--is-ancestor", TAG, "HEAD")
 check("标签是本分支的祖先（不是别的分支上的提交）", code == 0,
-      "%s 不在 HEAD %s 的历史里" % (tag_commit[:7], head[:7]))
+      "%s..%s" % (tag_commit[:7], head[:7]))
 
 code, moved, _ = git("diff", "--name-only", TAG + "..HEAD", "--", "src")
 moved = moved.strip() if code == 0 else ""
