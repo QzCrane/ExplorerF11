@@ -15,7 +15,7 @@ RC       := src/app.rc
 ICONS    := src/ExplorerF11.ico src/ExplorerF11-paused.ico
 DEP      := $(wildcard src/*.h)
 
-CXXFLAGS ?= -std=c++17 -Os -Wall -Wextra
+CXXFLAGS ?= -std=c++23 -Os -Wall -Wextra
 CXXFLAGS += -municode
 LDFLAGS  += -mwindows -static -static-libgcc -static-libstdc++ -s
 LDLIBS   := -luser32 -lshell32 -ladvapi32
@@ -29,7 +29,7 @@ $(OUT): $(SRC) $(RC) $(ICONS) $(DEP)
 	$(CXX) $(CXXFLAGS) $(SRC) $(RC) -o $@ $(LDFLAGS) $(LDLIBS)
 	@echo "built $@"
 
-debug: CXXFLAGS := -std=c++17 -O0 -g -Wall -Wextra -municode -D_DEBUG
+debug: CXXFLAGS := -std=c++23 -O0 -g -Wall -Wextra -municode -D_DEBUG
 debug: LDFLAGS  := -municode -static -static-libgcc -static-libstdc++
 debug: clean $(OUT)
 

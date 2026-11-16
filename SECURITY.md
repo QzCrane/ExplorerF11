@@ -79,15 +79,15 @@ Every release page publishes a SHA-256 for the uploaded exe. Check it before
 running the file:
 
 ```powershell
-Get-FileHash .\ExplorerF11-1.0.1-win64.exe -Algorithm SHA256
-(Get-Item .\ExplorerF11-1.0.1-win64.exe).VersionInfo.FileVersion   # 1.0.1.0
-.\ExplorerF11-1.0.1-win64.exe --version                            # ExplorerF11 1.0.1
+Get-FileHash .\ExplorerF11-1.0.2-win64.exe -Algorithm SHA256
+(Get-Item .\ExplorerF11-1.0.2-win64.exe).VersionInfo.FileVersion   # 1.0.2.0
+.\ExplorerF11-1.0.2-win64.exe --version                            # ExplorerF11 1.0.2
 ```
 
 The import table can be checked independently:
 
 ```powershell
-dumpbin /imports .\ExplorerF11-1.0.1-win64.exe | Select-String "\.dll"
+dumpbin /imports .\ExplorerF11-1.0.2-win64.exe | Select-String "\.dll"
 ```
 
 The binary is **not code-signed**, so SmartScreen warns on first run. That is

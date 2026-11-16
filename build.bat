@@ -28,10 +28,10 @@ exit /b 1
 echo [build] MinGW-w64 g++ (%MODE%)
 set SRC=src\main.cpp src\config.cpp src\residue.cpp src\i18n_extra.cpp src\app.rc
 if /i "%MODE%"=="debug" (
-    g++ -std=c++17 -O0 -g -municode -Wall -Wextra %SRC% -o dist\ExplorerF11.exe ^
+    g++ -std=c++23 -O0 -g -municode -Wall -Wextra %SRC% -o dist\ExplorerF11.exe ^
         -luser32 -lshell32 -ladvapi32
 ) else (
-    g++ -std=c++17 -Os -s -mwindows -municode -Wall -Wextra ^
+    g++ -std=c++23 -Os -s -mwindows -municode -Wall -Wextra ^
         -static -static-libgcc -static-libstdc++ %SRC% -o dist\ExplorerF11.exe ^
         -luser32 -lshell32 -ladvapi32
 )
@@ -50,11 +50,11 @@ rem carry CJK wide literals. Without it cl decodes them with the system ANSI
 rem code page, so a Japanese string compiles correctly only on a Japanese
 rem machine and turns to mojibake everywhere else.
 if /i "%MODE%"=="debug" (
-    cl /nologo /std:c++17 /utf-8 /EHsc /W4 /Zi /Od /D_DEBUG ^
+    cl /nologo /std:c++23 /utf-8 /EHsc /W4 /Zi /Od /D_DEBUG ^
        src\main.cpp src\config.cpp src\residue.cpp src\i18n_extra.cpp dist\app.res ^
        /Fo:dist\ /Fe:dist\ExplorerF11.exe /link /SUBSYSTEM:CONSOLE
 ) else (
-    cl /nologo /std:c++17 /utf-8 /EHsc /W4 /O2 /GL /DNDEBUG ^
+    cl /nologo /std:c++23 /utf-8 /EHsc /W4 /O2 /GL /DNDEBUG ^
        src\main.cpp src\config.cpp src\residue.cpp src\i18n_extra.cpp dist\app.res ^
        /Fo:dist\ /Fe:dist\ExplorerF11.exe /link /SUBSYSTEM:WINDOWS /LTCG
 )

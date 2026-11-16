@@ -53,9 +53,11 @@ equivalence.
 
 ## Code conventions
 
-- C++17 and Win32 only. No third-party libraries, no C++ exceptions across a
+- C++23 and Win32 only. No third-party libraries, no C++ exceptions across a
   Win32 callback, no `std::filesystem` — it pulls in more code than the exe
-  saves.
+  saves. The sources deliberately use no C++20/23-only library facilities, so an
+  older toolchain can still build them by switching the flag back to C++17; the
+  release binaries are compiled as C++23.
 - Comments explain *why*. A comment that restates the code is noise.
 - Check every `PostMessage` and `Reg*` return value when a failure would be
   silent. A failed delivery is what the recovery timer exists for.

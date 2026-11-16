@@ -6,6 +6,37 @@ All notable changes to this project. Versions follow [SemVer](https://semver.org
 used while the tool was still being shaped; none of them was ever published, and
 they are kept below as build history rather than as releases.
 
+## 1.0.2 - 2026-11-16
+
+Maintenance release. It ships the two post-release audit fixes that were
+committed after the 1.0.1 tag but never reached its Release asset, and moves the
+compilation baseline from C++17 to C++23. No documented behaviour changes.
+
+### Fixed
+
+- **Tools reading `VS_FIXEDFILEINFO` saw 1.0.0.0.** `src/app.rc` still carried
+  the numeric `FILEVERSION`/`PRODUCTVERSION` fields from 1.0.0 while the string
+  values said 1.0.1. Both now follow `EF11_VERSION`, and `tests/test_icons.py`
+  asserts the raw fields against `--version` so the mismatch cannot recur.
+- **The English residue report printed "1 entries".** The tray-bookkeeping line
+  now selects `entry` or `entries` by count; `tests/test_residue_report.py`
+  locks the branch.
+
+### Changed
+
+- **Compilation baseline is C++23** for MinGW (`-std=c++23`), MSVC
+  (`/std:c++23`) and CI. The sources use no C++20/23-only library facilities, so
+  a toolchain limited to C++17 can still build them by changing one flag in
+  `Makefile` or `build.bat`.
+
+### Delivery
+
+- Both READMEs now show the application icon. The PNG is generated from the
+  same master as the embedded ICO by `tools/make-icons.py`.
+- The 1.0.1 Release body was rewritten: it had been a verbatim copy of the 1.0.0
+  text, with stale filenames, checksums and gate counts. Release verification
+  now reads the published body back before a version is called done.
+
 ## 1.0.1 - 2026-11-16
 
 Patch release. Six defects found in a post-release audit. None was covered by CI
@@ -47,7 +78,7 @@ pinned by a source-contract assertion in `tests/test_robustness.py`.
   contracts for the event-driven paths, behavioural CLI checks for argument
   parsing, and ownership checks for the console handle and the fallback icon.
 
-### Audit follow-up
+### Post-release audit (fixes shipped in 1.0.2)
 
 A repository-wide audit of the CI workflow, build scripts, test suites,
 translation pipeline, GitHub templates and the remaining source files found two

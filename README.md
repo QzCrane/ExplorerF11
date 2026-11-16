@@ -51,13 +51,13 @@ the update history and the rejected alternatives are in
 
 ## Install and first run
 
-Download `ExplorerF11-1.0.1-win64.exe` from the
+Download `ExplorerF11-1.0.2-win64.exe` from the
 [latest release](https://github.com/QzCrane/ExplorerF11/releases/latest), check
 its hash, and put it anywhere permanent — it writes no files, so any folder
 works. `%LOCALAPPDATA%\Programs\ExplorerF11\` is a reasonable choice.
 
 ```powershell
-Get-FileHash .\ExplorerF11-1.0.1-win64.exe -Algorithm SHA256
+Get-FileHash .\ExplorerF11-1.0.2-win64.exe -Algorithm SHA256
 ```
 
 The binary is **not code-signed**; SmartScreen will warn on first run. Compare
@@ -158,7 +158,7 @@ make
 make test
 ```
 
-Plain C++17 and Win32; the only imported libraries are `user32`, `shell32` and
+Plain C++23 and Win32; the only imported libraries are `user32`, `shell32` and
 `advapi32`. `make test` runs 12 gates — three static checks over sources and
 translations, nine suites that drive the built binary rather than a mock — for
 323 assertions. Smoke tests open a real folder window and need a desktop session.

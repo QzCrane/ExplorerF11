@@ -1,7 +1,7 @@
 # Architecture
 
 This document describes what the shipped binary does. It is written against
-version 1.0.1 and the source tree at that tag; where a claim depends on a Win32
+version 1.0.2 and the source tree at that tag; where a claim depends on a Win32
 detail, the detail is named so the claim can be checked. For user-facing
 behaviour see [USAGE.en.md](USAGE.en.md); for the evidence behind the F11 trick
 see [RESEARCH.md](RESEARCH.md).

@@ -29,7 +29,7 @@ jobs:
           rem /utf-8 is mandatory: the sources are UTF-8 without a BOM and carry
           rem CJK wide literals. Without it cl decodes them with the ANSI code
           rem page and the Japanese and Korean strings turn into mojibake.
-          cl /nologo /std:c++17 /utf-8 /EHsc /W4 /O2 /DNDEBUG ^
+          cl /nologo /std:c++23 /utf-8 /EHsc /W4 /O2 /DNDEBUG ^
              src\main.cpp src\config.cpp src\residue.cpp src\i18n_extra.cpp dist\app.res ^
              /Fo:dist\ /Fe:dist\ExplorerF11.exe ^
              /link /SUBSYSTEM:WINDOWS
@@ -57,7 +57,7 @@ jobs:
           rem encoding cannot influence the result.
           dist\ExplorerF11.exe --version --quiet > dist\version.txt 2>&1
           type dist\version.txt
-          findstr /C:"ExplorerF11 1.0.1" dist\version.txt >nul || exit /b 1
+          findstr /C:"ExplorerF11 1.0.2" dist\version.txt >nul || exit /b 1
 
           dist\ExplorerF11.exe --help --quiet > dist\help.txt 2>&1
           findstr /C:"--status" dist\help.txt >nul || exit /b 1

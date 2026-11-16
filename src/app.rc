@@ -15,8 +15,8 @@ IDI_APP         ICON    "ExplorerF11.ico"
 IDI_APP_PAUSED  ICON    "ExplorerF11-paused.ico"
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION    1,0,1,0
- PRODUCTVERSION 1,0,1,0
+ FILEVERSION    1,0,2,0
+ PRODUCTVERSION 1,0,2,0
  FILEFLAGSMASK  VS_FFI_FILEFLAGSMASK
  FILEFLAGS      0x0L
  FILEOS         VOS_NT_WINDOWS32
@@ -29,12 +29,12 @@ BEGIN
         BEGIN
             VALUE "CompanyName",      "ExplorerF11"
             VALUE "FileDescription",  "ExplorerF11 - instant Explorer acceleration"
-            VALUE "FileVersion",      "1.0.1.0"
+            VALUE "FileVersion",      "1.0.2.0"
             VALUE "InternalName",     "ExplorerF11"
             VALUE "LegalCopyright",   "MIT License"
             VALUE "OriginalFilename", "ExplorerF11.exe"
             VALUE "ProductName",      "ExplorerF11"
-            VALUE "ProductVersion",   "1.0.1.0"
+            VALUE "ProductVersion",   "1.0.2.0"
         END
     END
     BLOCK "VarFileInfo"
