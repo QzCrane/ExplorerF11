@@ -307,13 +307,15 @@ including submenus as indented rows, so the layout test cannot drift from the UI
 Every suite restores the state it changed, including autostart and the stored
 language; the clean test only ever answers *No* to the confirmation.
 
-Thirteen gates, 369 assertions, each returning non-zero on failure:
+Fourteen gates, 369 assertions, each returning non-zero on failure:
 
 | Gate | Proves |
 |---|---|
 | `tools/check_i18n.py` | every `T()` key translated in five languages, placeholders intact, generated table current |
 | `tools/audit_i18n.py` | no wrong-script characters, no ASCII punctuation in CJK prose, no contradicting term |
 | `tools/check_help_align.py` | the `--help` option column starts at one offset in every language |
+| `check_release_facts.py` | every release-facing number in prose, build files and the manifest equals `release_facts.py` |
+| `check_gate_inventory.py` | every gate is classified CI-runnable or shell-dependent, CI runs exactly its subset, the table below lists each gate once |
 | `test_lang_names.py` | one name per language, identical in all five UI languages, matching the report header |
 | `test_menu_order.py` | exact rows, groups, ticks, five-way language radio group |
 | `test_residue_report.py` | report truth, five languages, live refresh, single confirmed clean entry |

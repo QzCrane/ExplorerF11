@@ -84,6 +84,7 @@ test: $(OUT)
 	python tools/audit_i18n.py
 	python tools/check_help_align.py
 	python tools/check_release_facts.py
+	python tools/check_gate_inventory.py
 	python tests/test_lang_names.py
 	python tests/test_menu_order.py
 	python tests/test_residue_report.py

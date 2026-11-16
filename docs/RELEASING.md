@@ -27,7 +27,7 @@ typed — and commits it before the tag, so the tagged tree contains the text th
 release page shows. `remote` compares all four GitHub-only surfaces against
 `release_facts.py` with `tools/check_github_sync.py`.
 
-`gates` does not run anything of its own. `facts` has to run all thirteen
+`gates` does not run anything of its own. `facts` has to run all fourteen
 commands already, because it derives the assertion count from them, and it
 records the fingerprint of the tree it ran against (`tools/treefp.py`). The
 `gates` stage recomputes that fingerprint and reuses the run when it matches;
@@ -100,7 +100,7 @@ version too. Historical entries and the release procedure's examples do not.
 ## 2. Clear the gates
 
 Every gate must pass on the exact commit that will be tagged. `make test` runs
-thirteen gates in this order:
+fourteen gates in this order:
 
 | Gate | What it proves |
 |---|---|
@@ -108,6 +108,7 @@ thirteen gates in this order:
 | `tools/audit_i18n.py` | wrong script, ASCII punctuation glued to CJK, mixed bracket styles, terminology drift |
 | `tools/check_help_align.py` | the `--help` option column starts at the same offset in all five languages |
 | `tools/check_release_facts.py` | every release-facing number matches `tools/release_facts.py` and `tools/measurement.json` |
+| `tools/check_gate_inventory.py` | every gate is classified CI or shell-dependent, CI runs exactly its share, and both tables below list the same fourteen gates |
 | `tests/test_lang_names.py` | five language rows identical in every UI language; each report header names the active language |
 | `tests/test_menu_order.py` | menu structure, language radio, localised bodies, counting unit, unknown-option handling |
 | `tests/test_residue_report.py` | report structure and wording in all five languages |

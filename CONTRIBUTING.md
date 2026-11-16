@@ -24,6 +24,8 @@ Either MSVC (Developer Command Prompt) or MinGW-w64 with `g++` on PATH:
 ```bat
 build.bat
 build.bat debug
+build.bat msvc       :: force cl.exe, which is what CI runs
+build.bat mingw      :: force g++, the compiler the release is built with
 ```
 
 Then:
@@ -32,9 +34,12 @@ Then:
 make test
 ```
 
-Thirteen gates: four static checks plus nine suites that drive the built binary.
+Fourteen gates: five static checks plus nine suites that drive the built binary.
 The suite needs the exe, so build first. `test_smoke.py` opens a real folder
-window and requires a desktop session.
+window and requires a desktop session. A new gate must also be classified in
+`tools/check_gate_inventory.py` — as CI-runnable or as needing a shell — and
+listed in the tables of `docs/ARCHITECTURE.md` and `docs/RELEASING.md`; that
+gate fails until all four surfaces agree.
 
 Three rules for tests:
 
@@ -50,6 +55,24 @@ ownership) cannot be driven deterministically on a CI runner. Pin their source
 contracts in `tests/test_robustness.py` and state plainly what was not
 exercised; do not substitute a mock for the Win32 behaviour and claim
 equivalence.
+
+## What is in `tools/`
+
+Not a junk drawer, and not interchangeable: five of these files are gates that
+run on every `make test`, the rest are the pipeline or the measurement behind a
+published number. Only `src/i18n_extra.cpp` and `docs/images/*.png` are
+generated from what is here.
+
+| Group | Files | Role |
+|---|---|---|
+| Gates | `check_i18n.py`, `audit_i18n.py`, `check_help_align.py`, `check_release_facts.py`, `check_gate_inventory.py` | run by `make test`; each exits non-zero on failure |
+| Translation pipeline | `extract_i18n_pairs.py`, `gen_i18n.py`, `sync_i18n.py`, `translations.json`, `i18n_strings.json` | extract `T()` sites, hold the four translations per key, regenerate `src/i18n_extra.cpp` |
+| Release pipeline | `release.py`, `release_facts.py`, `refresh_facts.py`, `check_github_sync.py`, `bump_version.py`, `treefp.py`, `measurement.json`, `capture-screenshots.py` | the sixteen stages, the number every document quotes, and the tree fingerprint that lets `gates` reuse a proven run |
+| Shared runtime | `win32util.py` | process launch and observation primitives used by the suites and the screenshot tool |
+| Measurement | `bench_hotpaths.cpp`, `bench_probes.cpp`, `bench_ua_match.cpp`, `measure_mem.cpp`, `mem_floor.cpp`, `verify_handles.cpp`, `verify_marks.cpp`, `icon_probe.cpp`, `make_ico_bmp.py`, `make-icons.py` | one-shot evidence for a number in `docs/PERFORMANCE.md` or `CHANGELOG.md`; kept so the claim can be re-measured, not run by anything |
+
+A measurement tool that no longer backs a published number is deleted, not kept
+"for reference". `dist/` holds only what a build or a release run produced.
 
 ## Code conventions
 
@@ -124,4 +147,4 @@ For anything security-related, use the private channel in
 ## Releasing
 
 [docs/RELEASING.md](docs/RELEASING.md) lists the files carrying the version, the
-thirteen gates and the build/verification/publication sequence.
+fourteen gates and the build/verification/publication sequence.

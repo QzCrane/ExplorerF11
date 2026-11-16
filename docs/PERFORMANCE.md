@@ -378,13 +378,13 @@ evidence, not opinion.
 
 `make release` is sixteen stages. It took 135 s; a local rehearsal of it now
 takes 12.6 s. Three things were being paid for without buying anything: the same
-thirteen gates ran twice, the suites slept, and the compiler worked on one file
+gates ran twice, the suites slept, and the compiler worked on one file
 at a time.
 
 ### The gates ran twice
 
 `refresh-facts` has to run every gate — it derives the assertion count from
-them. `gates` then ran `make test`: the same thirteen commands, on a tree that
+them. `gates` then ran `make test`: the same commands, on a tree that
 had changed only in the two files the first run wrote. Two runs of one question
 answer it once.
 
@@ -480,7 +480,7 @@ own stage instead of hiding it inside a total.
 
 Two rejected optimisations, with the number that settles them:
 
-- **Run the thirteen gates in parallel** (would save ~4 s): they share one
+- **Run the gates in parallel** (would save ~4 s): they share one
   registry key, one hidden window and one autostart entry. Overlapping them
   would test the tests. The suite is 6 s; the risk is a flaky gate in the release
   path, which is the worst place to have one.
