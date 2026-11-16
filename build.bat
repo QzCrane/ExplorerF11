@@ -12,18 +12,27 @@ rem than repeating the compiler command line, so the flags proved on every push
 rem are the flags this file documents - there is no second copy to drift.
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
-
-set MODE=%1
-set FORCE=auto
-if /i "%MODE%"=="msvc" (set FORCE=msvc & set MODE=release)
-if /i "%MODE%"=="mingw" (set FORCE=mingw & set MODE=release)
-if "%MODE%"=="" set MODE=release
-
 if not exist dist mkdir dist
 
-if /i "%FORCE%"=="msvc" goto msvc
-if /i "%FORCE%"=="mingw" goto mingw
+set MODE=%1
+rem `set FORCE=msvc` inside a parenthesised block captures the space before the
+rem `&`, so the comparison would see "msvc " and fall through to
+rem auto-detection - which is how a runner that had both compilers built this
+rem with MinGW while the workflow asked for MSVC. Jump to a label instead.
+if /i "%MODE%"=="msvc" goto force_msvc
+if /i "%MODE%"=="mingw" goto force_mingw
+if "%MODE%"=="" set MODE=release
+goto detect
 
+:force_msvc
+set MODE=release
+goto msvc
+
+:force_mingw
+set MODE=release
+goto mingw
+
+:detect
 where g++ >nul 2>&1
 if not errorlevel 1 goto mingw
 where cl >nul 2>&1
@@ -36,7 +45,19 @@ exit /b 1
 
 :mingw
 echo [build] MinGW-w64 g++ (%MODE%)
-set SRC=src\main.cpp src\config.cpp src\residue.cpp src\i18n_extra.cpp src\app.rc
+rem g++ compiles a .rc itself only when its driver finds windres; without one
+rem the script reaches the linker as an object and the build dies with "file
+rem format not recognized" - which is what a bare g++ in PATH did on a CI
+rem runner. Compile the resource explicitly, exactly as the Makefile does, so
+rem the two build paths cannot disagree about how the resource is produced.
+where windres >nul 2>&1
+if errorlevel 1 (
+    echo [ERROR] windres.exe not found; install the full MinGW-w64 toolchain.
+    exit /b 1
+)
+windres -I src src\app.rc -O coff -o dist\app.res
+if errorlevel 1 exit /b 1
+set SRC=src\main.cpp src\config.cpp src\residue.cpp src\i18n_extra.cpp dist\app.res
 if /i "%MODE%"=="debug" (
     g++ -std=c++23 -O0 -g -municode -Wall -Wextra %SRC% -o dist\ExplorerF11.exe ^
         -luser32 -lshell32 -ladvapi32
@@ -50,6 +71,15 @@ goto done
 
 :msvc
 echo [build] MSVC cl (%MODE%)
+rem Asking for cl.exe explicitly is useful on a machine that has both, and that
+rem is exactly where a missing Developer Command Prompt must not fall through to
+rem a compiler the caller did not ask for.
+where cl >nul 2>&1
+if errorlevel 1 (
+    echo [ERROR] cl.exe is not on PATH. Open a Developer Command Prompt,
+    echo         or run: build.bat mingw
+    exit /b 1
+)
 rem cl does not compile .rc files the way g++ does: rc.exe builds the resource
 rem object first, then the linker takes it as one more input. Skip this step and
 rem the exe ends up with no icon and no version block.
