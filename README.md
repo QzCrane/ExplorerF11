@@ -176,7 +176,8 @@ console handle ownership, icon ownership and argument parsing.
 | [docs/RESIDUE.md](docs/RESIDUE.md) | the 11 locations, write policy, manual verification |
 | [docs/PERFORMANCE.md](docs/PERFORMANCE.md) | every behaviour's cost, the optimisations, and the ones rejected with reasons |
 | [docs/RESEARCH.md](docs/RESEARCH.md) | measurements, update history, competing tools, rejected approaches |
-| [docs/RELEASING.md](docs/RELEASING.md) | version bumps, gates, artefact build and publication |
+| [docs/SIGNING.md](docs/SIGNING.md) | what a code-signing certificate would and would not change, what it costs, why this build is unsigned |
+| [docs/RELEASING.md](docs/RELEASING.md) | the release checklist, and the one command that executes it |
 | [SECURITY.md](SECURITY.md) | privilege use, attack surface, binary verification |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | invariants, code conventions, translation workflow |
 

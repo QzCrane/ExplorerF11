@@ -150,7 +150,8 @@ CLI 行为：Shell 钩子恢复、带句柄复用的 F11 恢复、控制台句�
 | [docs/RESIDUE.md](docs/RESIDUE.md) | 11 个位置、写入策略、手工核对 |
 | [docs/PERFORMANCE.md](docs/PERFORMANCE.md) | 每类行为的成本、已做的优化、以及被否掉的方案及原因 |
 | [docs/RESEARCH.md](docs/RESEARCH.md) | 实测、更新史、同类工具、被否掉的方案 |
-| [docs/RELEASING.md](docs/RELEASING.md) | 版本号改哪几处、闸门、产物构建与发布 |
+| [docs/SIGNING.md](docs/SIGNING.md) | 代码签名能解决什么、不能解决什么、各条路径的价格，以及当前为何未签 |
+| [docs/RELEASING.md](docs/RELEASING.md) | 发布清单，以及执行这份清单的那一条命令 |
 | [SECURITY.md](SECURITY.md) | 权限使用、攻击面、二进制核对 |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | 三条约束、代码约定、译文工作流 |
 
