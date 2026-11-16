@@ -9,25 +9,44 @@
 # The MSVC equivalent is build.bat; both produce the same single exe.
 
 CXX      ?= g++
-WINDRES  ?=
+WINDRES  ?= windres
 OUT      := dist/ExplorerF11.exe
+OBJDIR   := dist/obj
 SRC      := src/main.cpp src/config.cpp src/residue.cpp src/i18n_extra.cpp
+OBJ      := $(patsubst src/%.cpp,$(OBJDIR)/%.o,$(SRC))
 RC       := src/app.rc
+RES      := $(OBJDIR)/app.res
 ICONS    := src/ExplorerF11.ico src/ExplorerF11-paused.ico
 DEP      := $(wildcard src/*.h)
 
+# Each translation unit is compiled on its own so the four can run at once.
+# A single g++ invocation compiling and linking in one step is serial and
+# uncacheable; split this way the bytes are identical (verified against the
+# released hash) and the four compiles overlap. -j applies only to the object
+# files: every other target has a one-line recipe, so nothing else in this file
+# becomes concurrent.
+MAKEFLAGS += -j
+
 CXXFLAGS ?= -std=c++23 -Os -Wall -Wextra
 CXXFLAGS += -municode
-LDFLAGS  += -mwindows -static -static-libgcc -static-libstdc++ -s
+LDFLAGS  += -municode -mwindows -static -static-libgcc -static-libstdc++ -s
 LDLIBS   := -luser32 -lshell32 -ladvapi32
 
 .PHONY: all debug test i18n clean
 
 all: $(OUT)
 
-$(OUT): $(SRC) $(RC) $(ICONS) $(DEP)
-	@mkdir -p dist
-	$(CXX) $(CXXFLAGS) $(SRC) $(RC) -o $@ $(LDFLAGS) $(LDLIBS)
+$(OBJDIR):
+	@mkdir -p $(OBJDIR)
+
+$(OBJDIR)/%.o: src/%.cpp $(DEP) | $(OBJDIR)
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+$(RES): $(RC) $(ICONS) $(DEP) | $(OBJDIR)
+	$(WINDRES) -I src $(RC) -O coff -o $@
+
+$(OUT): $(OBJ) $(RES)
+	$(CXX) $(OBJ) $(RES) -o $@ $(LDFLAGS) $(LDLIBS)
 	@echo "built $@"
 
 debug: CXXFLAGS := -std=c++23 -O0 -g -Wall -Wextra -municode -D_DEBUG
