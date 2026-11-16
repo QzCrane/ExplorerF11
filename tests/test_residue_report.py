@@ -324,6 +324,14 @@ else:
 bad_plural = (re.findall(r"\b1 (items|tabs|entries|windows)\b", en) +
               re.findall(r"\b(?:0|[2-9]|\d\d+) (item|tab|entry|window)\b", en))
 check_true("英文版单复数正确", not bad_plural, bad_plural)
+# The tray-residue line had a fixed " entries", so one record read "1 entries".
+# It is only reachable when exactly one tray record exists, which this machine
+# may never have; pin the n == 1 branch at the source instead of waiting for it.
+residue_src = open(os.path.join(ROOT, "src", "residue.cpp"), encoding="utf-8").read()
+check_true("托盘条目单复数：1 条用单数 entry",
+           "trayN == 1 ? T(L\" 条\", L\" entry\")" in residue_src)
+check_true("托盘条目单复数：多条用复数 entries",
+           "T(L\" 条\", L\" entries\")" in residue_src)
 
 print("\n==== 3b. 五种语言：结构一致，结论不重复量词 ====")
 TITLE_TOKENS = {

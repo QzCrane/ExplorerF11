@@ -47,6 +47,28 @@ pinned by a source-contract assertion in `tests/test_robustness.py`.
   contracts for the event-driven paths, behavioural CLI checks for argument
   parsing, and ownership checks for the console handle and the fallback icon.
 
+### Audit follow-up
+
+A repository-wide audit of the CI workflow, build scripts, test suites,
+translation pipeline, GitHub templates and the remaining source files found two
+more defects that the release gates missed:
+
+- **Binary version block stayed at 1.0.0.0.** The 1.0.1 bump updated the
+  StringFileInfo `FileVersion`/`ProductVersion` strings but not the numeric
+  `FILEVERSION`/`PRODUCTVERSION` fields in `app.rc`, so tools reading
+  `VS_FIXEDFILEINFO` reported 1.0.0.0. `test_icons.py` now asserts the
+  `FileVersionRaw`/`ProductVersionRaw` values as well, and a regression check
+  confirmed the new assertion fails against the old block.
+- **"1 entries" in the English residue report.** The tray-bookkeeping line
+  always used the plural `entries`, so a single record read `1 entries`. It now
+  selects `entry`/`entries` by count, matching the existing item formatter.
+
+The suite grew from 319 to 323 assertions. Every file in the repository was
+reviewed; the rest of the audit found either correct behaviour or documented
+design trade-offs (notably: CI runs a stable six-gate subset while the twelve
+local gates include desktop-dependent suites; Prefetch bytes are counted in the
+report total because the item is genuinely removable by an elevated `--clean`).
+
 ### Measured
 
 Resource figures were re-measured on the 1.0.1 binary after the icon and handle

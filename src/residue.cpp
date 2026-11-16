@@ -482,8 +482,10 @@ std::vector<Residue> CollectResidues() {
         x.note    = T(L"每个托盘图标一条记录（含 1–3 KB 图标快照）；只统计指向本程序的那些",
                       L"one record per tray icon (a 1-3 KB icon snapshot); only entries pointing "
                       L"at this exe count");
-        x.present = TrayResidue(&d, &x.bytes) > 0;
-        if (x.present) x.content = d + T(L" 条", L" entries") + L" (" + FmtBytes(x.bytes) + L")";
+        int trayN = TrayResidue(&d, &x.bytes);
+        x.present = trayN > 0;
+        if (x.present) x.content = d + (trayN == 1 ? T(L" 条", L" entry") : T(L" 条", L" entries"))
+                                   + L" (" + FmtBytes(x.bytes) + L")";
         f.push_back(x);
     }
     // ---- 7. Compatibility Assistant store ------------------------------

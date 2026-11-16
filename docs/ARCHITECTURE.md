@@ -283,7 +283,7 @@ including submenus as indented rows, so the layout test cannot drift from the UI
 Every suite restores the state it changed, including autostart and the stored
 language; the clean test only ever answers *No* to the confirmation.
 
-Twelve gates, 319 assertions, each returning non-zero on failure:
+Twelve gates, 323 assertions, each returning non-zero on failure:
 
 | Gate | Proves |
 |---|---|

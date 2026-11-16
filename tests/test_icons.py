@@ -92,6 +92,13 @@ def version_info(name):
 
 check("FileVersion 与 --version 一致", version_info("FileVersion"), version + ".0")
 check("ProductVersion 与 --version 一致", version_info("ProductVersion"), version + ".0")
+# StringFileInfo (above) is a string table and can drift from the binary
+# VS_FIXEDFILEINFO block. 1.0.1 shipped with the block still at 1.0.0.0 because
+# only the strings were bumped. Raw reads that block, so assert it too.
+check("FileVersionRaw 与 --version 一致（二进制版本块）",
+      version_info("FileVersionRaw.ToString()"), version + ".0")
+check("ProductVersionRaw 与 --version 一致（二进制版本块）",
+      version_info("ProductVersionRaw.ToString()"), version + ".0")
 check("CompanyName", version_info("CompanyName"), "ExplorerF11")
 check_true("FileDescription 提到 ExplorerF11",
            "ExplorerF11" in version_info("FileDescription"), version_info("FileDescription"))

@@ -3,7 +3,7 @@
 
     python tests/test_robustness.py
 
-These five defects were invisible to CI and to the existing suites:
+These defects were invisible to CI and to the existing suites:
 
   1. On explorer restart, a failed shell-hook re-registration called
      RelaunchSelf() (synchronous DestroyWindow) and then still added a tray
@@ -15,9 +15,16 @@ These five defects were invisible to CI and to the existing suites:
   4. ConsoleOut()'s CONOUT$ handle was never closed (owned/borrowed confused).
   5. A bare trailing `--lang` was misreported as an unknown option.
 
+  6. app.rc bumped only the StringFileInfo strings to 1.0.1, leaving the
+     binary VS_FIXEDFILEINFO block at 1.0.0.0 (see test_icons.py Raw asserts).
+  7. The tray-residue line always printed " entries", so one record read
+     "1 entries" in English.
+
 For (1)-(4) the observable behaviour needs live shell events that cannot be
 driven deterministically, so the guarantee is asserted where it is encoded:
 the source contracts. (5) is asserted behaviourally through the real CLI.
+(6)-(7) are asserted in test_icons.py / test_residue_report.py where those
+artefacts are read.
 """
 
 import sys as _sys
