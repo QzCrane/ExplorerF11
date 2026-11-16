@@ -50,7 +50,8 @@ ExplorerF11 把它自动化：文件夹窗口出现、或者你在窗口里新�
   Get-FileHash .\ExplorerF11-1.0.0-win64.exe -Algorithm SHA256
   ```
 
-- 每个发行版都由 `.github/workflows/build.yml` 从对应 tag 构建，构建日志公开可查。
+- 每个发行版都从对应 tag 构建，发行说明里写明所用的工具链、SHA-256 与实测的
+  Windows 版本。CI 在每次推送和打 tag 时用 MSVC 构建同一个提交。
 
 ## 环境要求
 

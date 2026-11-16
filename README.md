@@ -59,8 +59,9 @@ This one was written to answer three questions properly:
   Get-FileHash .\ExplorerF11-1.0.0-win64.exe -Algorithm SHA256
   ```
 
-- Every release is built from the tagged commit by the workflow in
-  `.github/workflows/build.yml`; the build log is public.
+- Every release is built from the tagged commit, and the release notes record
+  the toolchain, the SHA-256 and the Windows build it was verified on. CI builds
+  the same commit with MSVC on every push and on the tag.
 
 ## Requirements
 
