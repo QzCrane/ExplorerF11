@@ -920,6 +920,17 @@ def main(argv=None):
             LOG.head("dry run stopped before " + name)
             note("build, facts, gates, screenshots and notes all passed.")
             note("Nothing was committed, pushed, tagged, uploaded or published.")
+            # The rehearsal is not free of writes: `facts` rewrites the measured
+            # numbers and the captures embed the build's own timestamp in the
+            # report header, so the PNGs differ every run. preflight proved the
+            # tree was clean, so everything dirty now was written by this run and
+            # can go back. Without this, the next rehearsal fails at preflight on
+            # its predecessor's output.
+            stray = git_out("status", "--porcelain")
+            if stray.strip():
+                run(["git", "checkout", "--", "."], quiet=True)
+                note("reverted %d file(s) this run rewrote; the tree is where the "
+                     "dry run found it" % len(stray.splitlines()))
             report_timings(timings)
             LOG.flush()
             return 0
