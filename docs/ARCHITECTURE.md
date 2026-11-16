@@ -1,7 +1,7 @@
 # Architecture
 
 This document describes what the shipped binary does. It is written against
-version 1.0.2 and the source tree at that tag; where a claim depends on a Win32
+version 1.0.3 and the source tree at that tag; where a claim depends on a Win32
 detail, the detail is named so the claim can be checked. For user-facing
 behaviour see [USAGE.en.md](USAGE.en.md); for the evidence behind the F11 trick
 see [RESEARCH.md](RESEARCH.md).
@@ -283,7 +283,7 @@ including submenus as indented rows, so the layout test cannot drift from the UI
 Every suite restores the state it changed, including autostart and the stored
 language; the clean test only ever answers *No* to the confirmation.
 
-Thirteen gates, 323 assertions, each returning non-zero on failure:
+Thirteen gates, 322 assertions, each returning non-zero on failure:
 
 | Gate | Proves |
 |---|---|

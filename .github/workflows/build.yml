@@ -58,7 +58,7 @@ jobs:
           rem encoding cannot influence the result.
           dist\ExplorerF11.exe --version --quiet > dist\version.txt 2>&1
           type dist\version.txt
-          findstr /C:"ExplorerF11 1.0.2" dist\version.txt >nul || exit /b 1
+          findstr /C:"ExplorerF11 1.0.3" dist\version.txt >nul || exit /b 1
 
           dist\ExplorerF11.exe --help --quiet > dist\help.txt 2>&1
           findstr /C:"--status" dist\help.txt >nul || exit /b 1

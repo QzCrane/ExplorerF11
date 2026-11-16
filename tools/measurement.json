@@ -1,5 +1,5 @@
 {
-  "assertions_total": 323,
+  "assertions_total": 322,
   "handles": 135,
   "private_mb": "1.85",
   "size_kib": 370,
@@ -7,7 +7,7 @@
     "test_icons.py": 25,
     "test_lang_names.py": 20,
     "test_language.py": 63,
-    "test_menu_order.py": 75,
+    "test_menu_order.py": 74,
     "test_registry_policy.py": 28,
     "test_residue_report.py": 73,
     "test_robustness.py": 24,
@@ -15,5 +15,5 @@
     "test_tray_cleanup.py": 7
   },
   "threads_peak": 4,
-  "version": "1.0.2"
+  "version": "1.0.3"
 }

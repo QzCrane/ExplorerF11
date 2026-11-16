@@ -258,17 +258,18 @@ static std::wstring ToCrlf(const std::wstring &s) {
 // Rebuild the body in place. The scroll offset is restored afterwards: the
 // report refreshes while the user is reading it, and jumping back to the top on
 // every new folder window would make the window unusable.
-static void RefreshStatus(HWND h) {
+static void RefreshStatus(HWND h, const WindowMarks *marks = nullptr) {
     HWND e = GetDlgItem(h, IDC_STATUS_TEXT);
     int top = e ? (int)SendMessageW(e, EM_GETFIRSTVISIBLELINE, 0, 0) : 0;
-    SetDlgItemTextW(h, IDC_STATUS_TEXT, ToCrlf(BuildResidueReport(NULL, NULL)).c_str());
+    SetDlgItemTextW(h, IDC_STATUS_TEXT,
+                    ToCrlf(BuildResidueReport(NULL, NULL, marks)).c_str());
     if (e && top > 0) SendMessageW(e, EM_LINESCROLL, 0, top);
 }
 
 // Any change in what the tool has done must reach an open report immediately;
 // a window that shows a snapshot from two minutes ago is worse than no window.
-static void RefreshStatusIfOpen() {
-    if (g_status && IsWindow(g_status)) RefreshStatus(g_status);
+static void RefreshStatusIfOpen(const WindowMarks *marks = nullptr) {
+    if (g_status && IsWindow(g_status)) RefreshStatus(g_status, marks);
 }
 
 // The one destructive action in the program, and the report window is its only
@@ -657,6 +658,7 @@ static HICON TrayIconForState() {
 }
 
 static std::wstring BuildTrayTip();   // defined below, needs the live state text
+static std::wstring BuildTrayTip(const WindowMarks &m);
 
 static void AddTray(HWND h) {
     NOTIFYICONDATAW nid = {};
@@ -701,15 +703,19 @@ static void AddTray(HWND h) {
 // by NIM_ADD. So a modify carrying only NIF_TIP silently drops NIF_SHOWTIP,
 // which is exactly how 6.2.0 turned a stale tooltip into no tooltip at all.
 // Every tip push must therefore carry both flags together.
-static void UpdateTrayTip() {
+static void UpdateTrayTip(const WindowMarks &m) {
     if (!g_hwnd) return;
     NOTIFYICONDATAW nid = {};
     nid.cbSize = sizeof(nid);
     nid.hWnd = g_hwnd;
     nid.uID = TRAY_ID;
     nid.uFlags = NIF_TIP | NIF_SHOWTIP;
-    wcsncpy_s(nid.szTip, BuildTrayTip().c_str(), _TRUNCATE);
+    wcsncpy_s(nid.szTip, BuildTrayTip(m).c_str(), _TRUNCATE);
     Shell_NotifyIconW(NIM_MODIFY, &nid);
+}
+
+static void UpdateTrayTip() {
+    UpdateTrayTip(MarkedWindows());
 }
 
 // Pause/resume changes both the picture and the sentence.
@@ -724,17 +730,17 @@ static void UpdateTrayIcon() {
     Shell_NotifyIconW(NIM_MODIFY, &nid);
 }
 
-static void RefreshTray() {
-    UpdateTrayIcon();
-    UpdateTrayTip();
-}
-
 // One notification for every surface that shows live state. The tooltip, the
 // tray picture and an open report all hang off this single call, so a change
 // can never reach one of them and miss another.
 static void OnStateChanged() {
-    RefreshTray();
-    RefreshStatusIfOpen();
+    // One snapshot feeds the tooltip and, when open, the report. Enumerating
+    // windows twice per event only doubled the cost without adding freshness:
+    // both surfaces are updated in the same message dispatch.
+    WindowMarks m = MarkedWindows();
+    UpdateTrayIcon();
+    UpdateTrayTip(m);
+    RefreshStatusIfOpen(&m);
 }
 
 // ---------------------------------------------------------------- language
@@ -780,18 +786,22 @@ static void RemoveTray(HWND h) {
 // The one definition of the live state. The tooltip and the menu header both
 // call it, and the count itself lives in residue.cpp, so the three surfaces
 // that show "how many" cannot drift apart.
-static std::wstring LiveStateText() {
+static std::wstring LiveStateText(const WindowMarks &m) {
     if (g_paused) return T(L"已暂停加速", L"paused");
-    return AcceleratedText(MarkedWindows());
+    return AcceleratedText(m);
 }
 
 // Name, version and live state in two short lines - the tray tooltip is the
 // only place a user sees the tool without opening anything.
-static std::wstring BuildTrayTip() {
+static std::wstring BuildTrayTip(const WindowMarks &m) {
     std::wstring s = L"ExplorerF11 " EF11_VERSION;
     s += L"\n";
-    s += LiveStateText();
+    s += LiveStateText(m);
     return s;
+}
+
+static std::wstring BuildTrayTip() {
+    return BuildTrayTip(MarkedWindows());
 }
 
 // The window "对当前窗口立即应用" would act on.
@@ -832,8 +842,10 @@ static HMENU BuildTrayMenu() {
     HMENU m = CreatePopupMenu();
 
     // Header: name + version + live state, so "is it working / is it paused"
-    // needs no click and no memory.
-    std::wstring state = LiveStateText();
+    // needs no click and no memory. One window walk feeds this and the residue
+    // count further down; two walks would only double the work.
+    WindowMarks marks = MarkedWindows();
+    std::wstring state = LiveStateText(marks);
     std::wstring head = L"ExplorerF11 " EF11_VERSION L"  \u00B7  " + state;
     AppendMenuW(m, MF_STRING | MF_GRAYED, 0, head.c_str());
 
@@ -906,7 +918,7 @@ static HMENU BuildTrayMenu() {
         // The count is shown right in the menu, so "how dirty is it" is visible
         // without opening anything. Totals only: building the whole report just
         // to print a number would scan everything twice.
-        ResidueTotals t = CurrentTotals();
+        ResidueTotals t = CurrentTotals(&marks);
         std::wstring label;
         if (!t.Clean())
             label = T(L"残留报告（", L"Residue report (") +

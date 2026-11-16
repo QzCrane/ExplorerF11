@@ -16,14 +16,14 @@ Provenance:
                (MSVC is not byte-identical, so no build-time size assertion)
 """
 
-VERSION = "1.0.2"
-ASSET = "ExplorerF11-%s-win64.exe" % VERSION
+VERSION = "1.0.3"
+ASSET = "ExplorerF11-" + VERSION + "-win64.exe"
 CHECKSUM = "SHA256SUMS.txt"
 
 GATES = 13
 STATIC_CHECKS = 4
 SUITES = 9
-ASSERTIONS = 323
+ASSERTIONS = 322
 
 SIZE_KIB = 370
 # A private-memory sample moves between 1.86 and 1.87 MB between runs. The

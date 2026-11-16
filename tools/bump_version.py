@@ -40,7 +40,6 @@ STATIC_REPLACEMENTS = (
         (r"ExplorerF11-\d+\.\d+\.\d+-win64\.exe", lambda v: "ExplorerF11-%s-win64.exe" % v),
         (r"# ExplorerF11 \d+\.\d+\.\d+", lambda v: "# ExplorerF11 %s" % v),
         (r"# \d+\.\d+\.\d+\.0", lambda v: "# %s.0" % v),
-        (r"# ExplorerF11 \d+\.\d+\.\d+$", lambda v: "# ExplorerF11 %s" % v),
     ]),
     ("docs/USAGE.en.md", [
         (r"ExplorerF11 \d+\.\d+\.\d+", lambda v: "ExplorerF11 %s" % v),
@@ -53,8 +52,8 @@ STATIC_REPLACEMENTS = (
     ]),
     ("tools/release_facts.py", [
         (r'(?m)^VERSION = "[^"]+"$', lambda v: 'VERSION = "%s"' % v),
-        (r'ASSET = "ExplorerF11-%s-win64\.exe"' % re.escape("%s"),
-         lambda v: 'ASSET = "ExplorerF11-%s-win64.exe" % VERSION'),
+        (r'(?m)^ASSET = .*$',
+         lambda v: 'ASSET = "ExplorerF11-" + VERSION + "-win64.exe"'),
     ]),
 )
 

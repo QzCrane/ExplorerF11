@@ -6,6 +6,41 @@ All notable changes to this project. Versions follow [SemVer](https://semver.org
 used while the tool was still being shaped; none of them was ever published, and
 they are kept below as build history rather than as releases.
 
+## 1.0.3 - 2026-11-16
+
+Maintenance release. It lowers the cost of a tray hover, makes the residue
+report test deterministic, and repairs the version-bump tool that had made
+1.0.2's facts drift possible. The 370 KiB single-file profile is unchanged.
+
+### Performance
+
+- **Tooltip refresh no longer walks every child of every window.** Tab counting
+  used `GetWindow(GW_CHILD)` plus `GetClassNameW` on each sibling; it now uses
+  `FindWindowExW` with `ShellTabWindowClass`, which does the class match inside
+  user32 and returns only direct children. A/B on the same machine, 1000
+  `NIN_POPUPOPEN` events per run: ~718/547 ms before, ~438/578 ms after
+  (median ~633 -> ~508 ms, about 20% less CPU per hover).
+- **One window snapshot per state change and per menu open.** `OnStateChanged()`
+  and `BuildTrayMenu()` previously enumerated windows twice - once for the
+  tooltip/header and again inside `BuildResidueReport()`/`CurrentTotals()`. The
+  snapshot is now passed down; the report and the tooltip still refresh in the
+  same message dispatch, so nothing is stale.
+- **One allocation instead of four while building the report.** The eleven
+  `Residue` rows are reserved up front and the report string reserves its
+  typical size. No output changes.
+
+### Tests and release tooling
+
+- `tests/test_residue_report.py` now creates a marked `CabinetWClass` window
+  with one `ShellTabWindowClass` child before taking the report. The tab-count
+  assertion used to depend on whether an Explorer window happened to be open;
+  it is now reproducible and checks both languages. The measured suite total
+  is 322 assertions.
+- `tools/bump_version.py` had an unreachable `SECURITY.md` rule that aborted a
+  bump after five files had already been rewritten, and an `ASSET` rule whose
+  replacement added a second `% VERSION`. Both are fixed; version-derived
+  strings now come from one script and are checked by the facts gate.
+
 ## 1.0.2 - 2026-11-16
 
 Maintenance release. It ships the two post-release audit fixes that were

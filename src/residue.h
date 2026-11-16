@@ -24,6 +24,18 @@
 
 namespace ef11 {
 
+// Live state of the acceleration marks. In-memory only: nothing here touches
+// disk, and everything disappears with the explorer process.
+//
+// The unit is the WINDOW, not the tab: F11 is handled by the window frame, so
+// one round trip covers every tab in that window at once. `tabs` is the number
+// of tabs those marked windows currently hold - it describes their contents,
+// not a second thing that was accelerated separately.
+struct WindowMarks {
+    int windows = 0;
+    int tabs    = 0;
+};
+
 enum class Group { Ours, Windows, File };
 
 struct Residue {
@@ -70,38 +82,29 @@ struct CleanReport {
     }
 };
 
-// Everything the tool can find, in report order.
-std::vector<Residue> CollectResidues();
+// Everything the tool can find, in report order. A caller that already has a
+// window-mark snapshot can pass it in instead of enumerating windows twice.
+std::vector<Residue> CollectResidues(const WindowMarks *marks = nullptr);
 
 ResidueTotals Summarize(const std::vector<Residue> &items);
 
 // Totals only, for callers that need a number and not the prose (the tray menu
 // shows the count on every open).
-ResidueTotals CurrentTotals();
+ResidueTotals CurrentTotals(const WindowMarks *marks = nullptr);
 
 // "3 项" / "3 items". Exposed so the menu label and the report body agree on how
 // a count is spelled, plurals included.
 std::wstring FormatItemCount(int n);
 
 // Human-readable report in the current UI language. places/bytes (optional)
-// receive the same totals as CurrentTotals().
-std::wstring BuildResidueReport(int *places = nullptr, DWORD *bytes = nullptr);
+// receive the same totals as CurrentTotals(). `marks` is the same optional
+// snapshot: one state change can refresh the tip and the report from one read.
+std::wstring BuildResidueReport(int *places = nullptr, DWORD *bytes = nullptr,
+                                const WindowMarks *marks = nullptr);
 
 // Remove everything removable. The exe and the in-memory window marks are
 // deliberately not touched.
 CleanReport CleanAll();
-
-// Live state of the acceleration marks. In-memory only: nothing here touches
-// disk, and everything disappears with the explorer process.
-//
-// The unit is the WINDOW, not the tab: F11 is handled by the window frame, so
-// one round trip covers every tab in that window at once. `tabs` is the number
-// of tabs those marked windows currently hold - it describes their contents,
-// not a second thing that was accelerated separately.
-struct WindowMarks {
-    int windows = 0;
-    int tabs    = 0;
-};
 
 WindowMarks MarkedWindows();
 

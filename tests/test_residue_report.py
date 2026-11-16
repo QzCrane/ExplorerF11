@@ -83,6 +83,60 @@ def start(*args):
     time.sleep(1.4)
 
 
+class WNDCLASS(ctypes.Structure):
+    _fields_ = [("style", wintypes.UINT), ("lpfnWndProc", ctypes.c_void_p),
+                ("cbClsExtra", ctypes.c_int), ("cbWndExtra", ctypes.c_int),
+                ("hInstance", wintypes.HINSTANCE), ("hIcon", wintypes.HICON),
+                ("hCursor", wintypes.HANDLE), ("hbrBackground", wintypes.HANDLE),
+                ("lpszMenuName", wintypes.LPCWSTR), ("lpszClassName", wintypes.LPCWSTR)]
+
+
+def marked_probe():
+    """A real CabinetWClass window with one ShellTabWindowClass child, marked.
+
+    The test needs a window whose tab count is known, but the shell may not have
+    an Explorer window open at all. Writing the same two properties the tray
+    writes makes the count deterministic without posting F11 to a real window.
+    """
+    k32 = ctypes.windll.kernel32
+    k32.GetModuleHandleW.argtypes = [wintypes.LPCWSTR]
+    k32.GetModuleHandleW.restype = wintypes.HINSTANCE
+    u.DefWindowProcW.argtypes = [wintypes.HWND, wintypes.UINT,
+                                 wintypes.WPARAM, wintypes.LPARAM]
+    u.DefWindowProcW.restype = ctypes.c_ssize_t
+    u.RegisterClassW.argtypes = [ctypes.POINTER(WNDCLASS)]
+    u.RegisterClassW.restype = wintypes.ATOM
+    u.CreateWindowExW.argtypes = [wintypes.DWORD, wintypes.LPCWSTR,
+                                  wintypes.LPCWSTR, wintypes.DWORD,
+                                  ctypes.c_int, ctypes.c_int,
+                                  ctypes.c_int, ctypes.c_int,
+                                  wintypes.HWND, wintypes.HMENU,
+                                  wintypes.HINSTANCE, wintypes.LPVOID]
+    u.CreateWindowExW.restype = wintypes.HWND
+    u.SetPropW.argtypes = [wintypes.HWND, wintypes.LPCWSTR, wintypes.HANDLE]
+    proto = ctypes.WINFUNCTYPE(ctypes.c_ssize_t, wintypes.HWND, wintypes.UINT,
+                               wintypes.WPARAM, wintypes.LPARAM)
+
+    def wnd_proc(h, m, wp, lp):
+        return u.DefWindowProcW(h, m, wp, lp)
+
+    cb = proto(wnd_proc)          # kept alive by the class registration
+    for cls in ("CabinetWClass", "ShellTabWindowClass"):
+        wc = WNDCLASS()
+        wc.lpfnWndProc = ctypes.cast(cb, ctypes.c_void_p)
+        wc.hInstance = k32.GetModuleHandleW(None)
+        wc.lpszClassName = cls
+        u.RegisterClassW(ctypes.byref(wc))
+
+    parent = u.CreateWindowExW(0, "CabinetWClass", "residue-report-probe", 0,
+                               0, 0, 10, 10, None, None, None, None)
+    child = u.CreateWindowExW(0, "ShellTabWindowClass", "tab",
+                              0x40000000, 0, 0, 5, 5, parent, None, None, None)
+    u.SetPropW(parent, "ExplorerF11.Marked", 1)
+    u.SetPropW(parent, "ExplorerF11.Tick", 1)
+    return parent, child
+
+
 def hwnd(cls):
     return u.FindWindowW(cls, None)
 
@@ -249,6 +303,11 @@ kill()
 run_status()
 before = state()
 print("      state:", before)
+# One marked window with exactly one tab, created before the report is taken so
+# the tab-count assertion does not depend on whether somebody happens to have
+# Explorer open. Writing the two properties the tray writes keeps F11 away from
+# a real window.
+probe_parent, probe_child = marked_probe()
 code, out = run_status()
 print("      --status exit =", code)
 for line in out.strip().splitlines()[:6]:
@@ -436,6 +495,8 @@ if win:
 print("\n==== 8. 退出后状态不变 ====")
 kill()
 check("状态仍与测试前一致", state(), before)
+u.DestroyWindow(probe_child)
+u.DestroyWindow(probe_parent)
 
 bad = [r for r in results if not r[0]]
 print("\n%s  %d/%d 通过" % ("ALL PASS" if not bad else "FAILURES",
