@@ -105,7 +105,7 @@ installed 26100 build on a 26300 system is exactly that case.
 | Host window | hidden top-level window | `HWND_MESSAGE` windows never receive `TaskbarCreated`, so the tool went silent on every Explorer restart |
 | De-duplication | `ExplorerF11.Marked` + `ExplorerF11.Tick` window properties | an `HWND` set misjudges after handle reuse; the tick also gates the tab hook for 1.2 s after creation |
 | Recovery | 500 ms timer, all at-risk windows, `(hwnd, tick)` identity | can only exit fullscreen; a recycled handle is never poked or unmarked |
-| Tabs | `SetWinEventHook(EVENT_OBJECT_CREATE)` | a tab is a child window and fires no shell hook |
+| Tabs | `SetWinEventHook(EVENT_OBJECT_CREATE…EVENT_OBJECT_DESTROY)` | a tab is a child window and fires no shell hook; on close only the destroy event arrives, with class and parent already gone, so that branch recounts without a filter |
 | Configuration | registry, deviations only | command-line preferences are lost on autostart and on self-relaunch; defaults should not be on disk |
 | Console output | `WriteConsoleW` to consoles, UTF-8 `WriteFile` to pipes | no code-page transcoding; the `CONOUT$` fallback handle is closed after use |
 

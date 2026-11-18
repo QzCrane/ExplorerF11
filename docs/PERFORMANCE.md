@@ -11,7 +11,7 @@ one-shot recovery — so "performance" here means three different budgets:
 
 | Budget | Behaviours | Target |
 |---|---|---|
-| per shell event | window created/destroyed/activated, tab created, restored, recovery | microseconds of our own work, at most one cross-process call |
+| per shell event | window created/destroyed/activated, tab created/closed, restored, recovery | microseconds of our own work, at most one cross-process call |
 | per user action | tray menu, apply, pause, toggles, language, report open/refresh/copy/clean | a few milliseconds, below what a menu animation hides |
 | per process | start-up, `--status`, `--menu`, `--clean` | dominated by the Windows loader, not by us |
 
@@ -50,6 +50,7 @@ Every entry point, what it did in 1.0.3, and what it does now. "Push" means one
 | `HSHELL_WINDOWDESTROYED` | `GetProp` gate + snapshot + 1 push | same, snapshot is a validated set |
 | `HSHELL_WINDOWACTIVATED` | class + title check, remember target | unchanged (no snapshot, no IPC) |
 | tab created (`EVENT_OBJECT_CREATE`) | class check on every window creation in the system, then 4 posts + push | unchanged; a non-tab costs one `GetClassNameW` |
+| tab closed (`EVENT_OBJECT_DESTROY`) | one timer, then snapshot + push on settle | no class/parent filter possible at teardown, so one recount per window destroyed on the desktop; push skipped when the tip is unchanged |
 | restored from minimized | class + title + 4 posts + push | same, push skipped when nothing changed |
 | recovery timer (500 ms, one-shot) | token check + optional 2 posts + push | unchanged; push skipped when nothing was at risk |
 | `TaskbarCreated` (explorer restart) | re-register + remove + add tray | add builds the tip once instead of twice |
@@ -364,6 +365,7 @@ evidence, not opinion.
 | Keep the log file open for the process lifetime | The reason first written down ("an open handle makes `--clean` fail") was **wrong**: `DeleteFile` succeeds when the handle was opened with `FILE_SHARE_DELETE`. The real reason is that logging is off by default (`--log` only), so the open/close pair costs the default configuration nothing, and the diagnostic mode is the one place where losing a line to a buffered handle would matter. |
 | Drop `TranslateMessage` | Saves nanoseconds per message; the loop stops being the idiomatic one. |
 | Drop the title check on activation | `HSHELL_WINDOWACTIVATED` fires for every activation, and `GetWindowTextW` is a cross-process send. But Control Panel shares `CabinetWClass` with folder windows, and the title is the only cheap signal that separates them — without it the tool would "accelerate" Control Panel. The send happens only after the class already matched, so it is one call per folder activation. |
+| Narrow the `EVENT_OBJECT_DESTROY` branch to tabs | By delivery time `GetClassNameW` returns 0 and `GetParent` is NULL — the window is already in teardown. A class or parent filter would drop every real tab close (measured: an earlier version did exactly that and the count never moved). One `MarkedWindows()` recount per desktop window destruction is the price of observing the ones that matter. |
 | Narrow the `EVENT_OBJECT_CREATE` hook | `SetWinEventHook` cannot filter by object type or class; the callback has to see the event and reject it. `WINEVENT_SKIPOWNPROCESS` is set, and the reject path is one comparison plus, for window objects only, one `GetClassNameW`. |
 
 ### Rejected on semantics, not speed

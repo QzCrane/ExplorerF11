@@ -89,8 +89,74 @@ u.GetDlgItem.restype = wintypes.HWND
 u.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
 u.RegisterWindowMessageW.argtypes = [wintypes.LPCWSTR]
 u.RegisterWindowMessageW.restype = wintypes.UINT
+u.CreateWindowExW.argtypes = [wintypes.DWORD, wintypes.LPCWSTR, wintypes.LPCWSTR,
+                              wintypes.DWORD, ctypes.c_int, ctypes.c_int,
+                              ctypes.c_int, ctypes.c_int, wintypes.HWND,
+                              wintypes.HMENU, wintypes.HINSTANCE, wintypes.LPVOID]
+u.CreateWindowExW.restype = wintypes.HWND
+u.RegisterClassW.argtypes = [ctypes.c_void_p]
+u.RegisterClassW.restype = wintypes.ATOM
+u.SetPropW.argtypes = [wintypes.HWND, wintypes.LPCWSTR, wintypes.HANDLE]
+u.DestroyWindow.argtypes = [wintypes.HWND]
 
 CB = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+
+
+_probe_wndproc = None   # module-level: a registered WNDCLASS keeps a raw pointer
+
+
+class WNDCLASS(ctypes.Structure):
+    _fields_ = [("style", wintypes.UINT), ("lpfnWndProc", ctypes.c_void_p),
+                ("cbClsExtra", ctypes.c_int), ("cbWndExtra", ctypes.c_int),
+                ("hInstance", wintypes.HINSTANCE), ("hIcon", wintypes.HICON),
+                ("hCursor", wintypes.HANDLE), ("hbrBackground", wintypes.HANDLE),
+                ("lpszMenuName", wintypes.LPCWSTR), ("lpszClassName", wintypes.LPCWSTR)]
+
+
+def make_tab_probe(n=2):
+    """A marked CabinetWClass frame with n ShellTabWindowClass tab children.
+
+    Built before the app starts: the app's marked set is seeded from a desktop
+    walk on first read, so a window marked afterwards would never be counted.
+    Writing the two properties the tray writes avoids posting F11 to a real
+    window; the tab children are what MarkedWindows() counts in brackets.
+    """
+    k32 = ctypes.windll.kernel32
+    k32.GetModuleHandleW.argtypes = [wintypes.LPCWSTR]
+    k32.GetModuleHandleW.restype = wintypes.HINSTANCE
+    u.DefWindowProcW.argtypes = [wintypes.HWND, wintypes.UINT,
+                                 wintypes.WPARAM, wintypes.LPARAM]
+    u.DefWindowProcW.restype = ctypes.c_ssize_t
+    global _probe_wndproc
+    if _probe_wndproc is None:
+        proto = ctypes.WINFUNCTYPE(ctypes.c_ssize_t, wintypes.HWND, wintypes.UINT,
+                                   wintypes.WPARAM, wintypes.LPARAM)
+
+        def wnd_proc(h, m, wp, lp):
+            return u.DefWindowProcW(h, m, wp, lp)
+
+        # A registered window class stores the raw function pointer, not a
+        # PyObject reference. Keeping the callback only in a local lets the GC
+        # reclaim it on return; DestroyWindow then jumps to a freed thunk and
+        # takes the whole test process down with STATUS_FATAL_USER_CALLBACK.
+        _probe_wndproc = proto(wnd_proc)
+    for cls in ("CabinetWClass", "ShellTabWindowClass"):
+        wc = WNDCLASS()
+        wc.lpfnWndProc = ctypes.cast(_probe_wndproc, ctypes.c_void_p)
+        wc.hInstance = k32.GetModuleHandleW(None)
+        wc.lpszClassName = cls
+        u.RegisterClassW(ctypes.byref(wc))
+
+    parent = u.CreateWindowExW(0, "CabinetWClass", "tab-refresh-probe", 0,
+                               0, 0, 10, 10, None, None, None, None)
+    children = []
+    for i in range(n):
+        children.append(u.CreateWindowExW(0, "ShellTabWindowClass", "tab",
+                                          0x40000000, 0, 0, 5, 5,
+                                          parent, None, None, None))
+    u.SetPropW(parent, "ExplorerF11.Marked", 1)
+    u.SetPropW(parent, "ExplorerF11.Tick", 1)
+    return parent, children
 GWL_STYLE = -16
 WS_CAPTION = 0x00C00000
 IDM_STATUS = 1010
@@ -203,6 +269,23 @@ def marked_windows(win):
     """Window count from the report's own row; 0 when the row reads absent."""
     m = re.search(r"what:\s+(\d+) windows? accelerated", report_body(win))
     return int(m.group(1)) if m else 0
+
+
+def marked_tabs(win):
+    """Tab count in brackets on the report's window-marks row; 0 when absent."""
+    m = re.search(r"what:\s+\d+ windows? accelerated \((\d+) tabs?\)", report_body(win))
+    return int(m.group(1)) if m else 0
+
+
+def wait_tabs(win, want, timeout=10.0):
+    state = {"n": -1}
+
+    def hit():
+        state["n"] = marked_tabs(win)
+        return state["n"] == want
+
+    winutil.wait_until(hit, timeout=timeout)
+    return state["n"]
 
 
 def wait_marks(win, want, timeout=10.0):
@@ -355,6 +438,30 @@ winutil.terminate()
 if os.path.exists(LOG):
     os.remove(LOG)
 check_true("日志已删除", not os.path.exists(LOG))
+
+print("\n8) 关掉标签页：浮窗与菜单共用的状态必须跟随 tab 数下降")
+# The tray tooltip is a shell-owned surface with no read-back, but it is pushed
+# by OnStateChanged from the same WindowMarks snapshot the report renders. So
+# the report's bracketed tab count is an observable proxy for that push: if a
+# closed tab leaves it stale, the tooltip is stale too and the menu - rebuilt
+# on every open - disagrees with both.
+# A synthetic marked frame with two tabs is created BEFORE the app starts, so
+# the first MarkedWindows() seed picks it up. Destroy one tab child: that fires
+# EVENT_OBJECT_DESTROY (no shell-hook message, the frame stays alive), and only
+# the DESTROY branch of WinEventProc can make the count drop.
+probe, probe_tabs = make_tab_probe(2)
+check("合成窗口有两个 tab 子窗口", len(probe_tabs), 2)
+app = winutil.launch(EXE, ["--log", "--lang", "en"])
+winutil.wait_until(lambda: "started (" in read_log(), timeout=20)
+report = open_report(app)
+check_true("报告窗口已打开（tab 刷新测试）", bool(report), "0x%08X" % (report or 0))
+base_tabs = marked_tabs(report)
+print("   baseline tabs = %d" % base_tabs)
+check_true("合成窗口的两个 tab 已计入", base_tabs >= 2, str(base_tabs))
+u.DestroyWindow(probe_tabs[1])
+check("关掉一个 tab -> 报告 tab 数 -1", wait_tabs(report, base_tabs - 1), base_tabs - 1)
+u.DestroyWindow(probe)
+winutil.terminate()
 
 bad = results.count(False)
 print("\n%s  %d/%d 通过" % ("ALL PASS" if not bad else "FAILURES",

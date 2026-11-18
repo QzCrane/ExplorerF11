@@ -6,6 +6,42 @@ All notable changes to this project. Versions follow [SemVer](https://semver.org
 used while the tool was still being shaped; none of them was ever published, and
 they are kept below as build history rather than as releases.
 
+## 1.0.6 - 2026-11-17
+
+Closing a tab left the tray tooltip showing the old tab count while the menu,
+rebuilt on every open, already showed the new one. The bracketed figure is a
+statement about the tabs a marked window currently holds, so the two surfaces
+disagreed until some unrelated event happened to push the tooltip again.
+
+A tab is a `ShellTabWindowClass` child, not a top-level window: closing one
+leaves the frame alive and fires no `HSHELL_WINDOWDESTROYED`. Only
+`EVENT_OBJECT_CREATE` was hooked, to re-accelerate the frame when a tab opens;
+there was no path for the close. The WinEvent hook now spans
+`EVENT_OBJECT_DESTROY` and schedules the same 60 ms `SETTLE_TIMER` the window-close
+handler uses, so the recount happens after the tab is gone and a burst of closes
+collapses into one rebuild.
+
+The destroy branch sits before the class and parent filters on purpose. Measured
+at delivery time, `GetClassNameW(hwnd)` returns 0 and `GetParent(hwnd)` is NULL —
+the window is already in teardown. Either filter would have discarded exactly the
+events the branch exists for; an earlier version of this fix did, and the tab
+count never moved. The unfiltered branch costs one `MarkedWindows()` recount per
+window destroyed anywhere on the desktop; `PushTraySurface()` skips the IPC when
+the rebuilt tip is unchanged. It is not gated on pause or the new-tab switch:
+those decide whether to post F11, never whether to report a count.
+
+`test_smoke.py` now builds a marked `CabinetWClass` frame with two
+`ShellTabWindowClass` children before the app starts, destroys one, and reads the
+tab count from the already-open report. Against the 1.0.5 binary the assertion
+fails (`got=4 want=3`); with the fix it holds. The test also keeps its ctypes
+window-procedure object alive for the process lifetime — a registered `WNDCLASS`
+stores a raw function pointer, and letting the callback be collected crashed the
+test process with `STATUS_FATAL_USER_CALLBACK` on `DestroyWindow`.
+
+The binary is 420,864 bytes (411 KiB), unchanged from 1.0.5: the branch and its
+timer reuse what the window-close path already had. Assertions 356 → 360; gates
+still 14.
+
 ## 1.0.5 - 2026-11-16
 
 The count of accelerated windows only ever went up. Closing a folder window left

@@ -1,7 +1,7 @@
 {
-  "assertions_total": 356,
+  "assertions_total": 360,
   "handles": 129,
-  "private_mb": "1.77",
+  "private_mb": "1.78",
   "size_kib": 411,
   "suite_assertions": {
     "test_icons.py": 20,
@@ -11,9 +11,9 @@
     "test_registry_policy.py": 28,
     "test_residue_report.py": 77,
     "test_robustness.py": 36,
-    "test_smoke.py": 30,
+    "test_smoke.py": 34,
     "test_tray_cleanup.py": 7
   },
   "threads_peak": 4,
-  "version": "1.0.5"
+  "version": "1.0.6"
 }

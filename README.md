@@ -52,13 +52,13 @@ the update history and the rejected alternatives are in
 
 ## Install and first run
 
-Download `ExplorerF11-1.0.5-win64.exe` from the
+Download `ExplorerF11-1.0.6-win64.exe` from the
 [latest release](https://github.com/QzCrane/ExplorerF11/releases/latest), check
 its hash, and put it anywhere permanent — it writes no files, so any folder
 works. `%LOCALAPPDATA%\Programs\ExplorerF11\` is a reasonable choice.
 
 ```powershell
-Get-FileHash .\ExplorerF11-1.0.5-win64.exe -Algorithm SHA256
+Get-FileHash .\ExplorerF11-1.0.6-win64.exe -Algorithm SHA256
 ```
 
 The binary is **not code-signed**; SmartScreen will warn on first run. Compare
@@ -164,7 +164,7 @@ make test
 Plain C++23 and Win32; the only imported libraries are `user32`, `shell32` and
 `advapi32`. `make test` runs 14 gates — five static checks over sources and
 translations, nine suites that drive the built binary rather than a mock — for
-356 assertions. Smoke tests open a real folder window and need a desktop session.
+360 assertions. Smoke tests open a real folder window and need a desktop session.
 One gate (`tests/test_robustness.py`) pins the event-driven and CLI fixes that a
 CI runner cannot exercise: shell-hook recovery, F11 recovery with handle reuse,
 console handle ownership, icon ownership and argument parsing.

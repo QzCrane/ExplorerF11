@@ -1,7 +1,7 @@
 # Architecture
 
 This document describes what the shipped binary does. It is written against
-version 1.0.5 and the source tree at that tag; where a claim depends on a Win32
+version 1.0.6 and the source tree at that tag; where a claim depends on a Win32
 detail, the detail is named so the claim can be checked. For user-facing
 behaviour see [USAGE.en.md](USAGE.en.md); for the evidence behind the F11 trick
 see [RESEARCH.md](RESEARCH.md).
@@ -52,7 +52,8 @@ loop.
 | Trigger | API | Why this mechanism |
 |---|---|---|
 | Folder window created | `RegisterShellHookWindow` → `HSHELL_WINDOWCREATED` | arrives at creation, desktop-wide, no polling cost |
-| Tab created in an existing window | `SetWinEventHook(EVENT_OBJECT_CREATE)`, filtered to `ShellTabWindowClass` | a tab is a child window and fires no shell hook |
+| Tab created in an existing window | `SetWinEventHook(EVENT_OBJECT_CREATE…EVENT_OBJECT_DESTROY)`, creation filtered to `ShellTabWindowClass` | a tab is a child window and fires no shell hook |
+| Tab closed in an existing window | same hook, `EVENT_OBJECT_DESTROY` branch | the frame stays, so no `HSHELL_WINDOWDESTROYED`; the bracketed tab count and the cached tooltip must still drop |
 | Window restored from minimised | `SetWinEventHook(EVENT_SYSTEM_MINIMIZEEND)` | restored windows come back with rebuilt chrome |
 | Tool started | `WM_APP_INITIAL`, posted after the message loop starts | covers windows that already existed |
 | Explorer restarted | `TaskbarCreated` broadcast | both the shell hook and the tray icon are gone |
@@ -63,6 +64,17 @@ window creation on the desktop — cheaper than `EVENT_OBJECT_SHOW`, which fires
 much more often and still needs the same filter. `EVENT_OBJECT_CREATE` is the
 one hook with a measurable per-event cost; it is also the only notification that
 arrives before a new tab paints.
+
+Closing a tab is the mirror case: the frame lives on, so there is no shell-hook
+message, and the count in brackets would stay high in the tooltip (pushed only
+on state changes) while the menu — rebuilt on every open — already showed the
+new number. The same WinEvent hook now spans `EVENT_OBJECT_DESTROY` and schedules
+the shared `SETTLE_TIMER`. That branch deliberately has no class or parent
+filter: by the time the destroy event is delivered `GetClassNameW` and
+`GetParent` both return empty (measured), so either filter would discard exactly
+the events it exists for. The cost is one extra `MarkedWindows()` recount per
+window destroyed anywhere on the desktop; `PushTraySurface()` drops the IPC when
+the rebuilt tip is unchanged.
 
 ## Window marks and the de-duplication gate
 
@@ -173,10 +185,10 @@ is kept rather than leaving an empty tray slot.
 The tooltip is the only surface visible without opening anything, and the shell
 caches its text at `NIM_ADD`. Two mechanisms keep it current:
 
-1. Every state change — window created or destroyed, restore, new tab, recovery
-   timer, pause, apply, apply-all, start-up sweep — funnels through
-   `OnStateChanged()`, which refreshes the tooltip, the tray image and any open
-   report in one call. The push itself is memoised in `PushTraySurface()`: it
+1. Every state change — window created or destroyed, restore, new tab, tab
+   closed, recovery timer, pause, apply, apply-all, start-up sweep — funnels
+   through `OnStateChanged()`, which refreshes the tooltip, the tray image and
+   any open report in one call. The push itself is memoised in `PushTraySurface()`: it
    compares the freshly built tip and icon with what the shell was last told and
    returns before the IPC when they match. One `NIM_MODIFY` carries `NIF_ICON |
    NIF_TIP | NIF_SHOWTIP` instead of two separate calls — a modify is a
@@ -307,7 +319,7 @@ including submenus as indented rows, so the layout test cannot drift from the UI
 Every suite restores the state it changed, including autostart and the stored
 language; the clean test only ever answers *No* to the confirmation.
 
-Fourteen gates, 356 assertions, each returning non-zero on failure:
+Fourteen gates, 360 assertions, each returning non-zero on failure:
 
 | Gate | Proves |
 |---|---|
@@ -379,9 +391,11 @@ against a fresh walk in seven live states.
   change it; the tool then quietly does nothing rather than breaking anything.
 - Windows opened before start-up need the start-up sweep. With that option off,
   those windows stay unaccelerated until *Apply to all open windows*.
-- `EVENT_OBJECT_CREATE` fires for every object on the desktop; the handler
-  filters on class name and process id, but this is the one hook with a
-  measurable, if small, per-event cost.
+- `EVENT_OBJECT_CREATE` fires for every object on the desktop; the creation
+  path filters on class name and process id, but this is the one hook with a
+  measurable, if small, per-event cost. The destroy path cannot filter (class
+  and parent are already gone when it arrives) and so recounts once per window
+  destroyed anywhere on the desktop.
 - Prefetch entries can only be removed with elevation. `--clean` reports the
   entries it could not delete instead of claiming success.
 - The event-driven fixes were verified by source contracts and live smoke

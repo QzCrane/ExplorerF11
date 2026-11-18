@@ -112,7 +112,7 @@ static const UINT IDC_STATUS_CLEAN = 2003;
 static const UINT IDC_STATUS_CLOSE = 2004;
 static const UINT TRAY_ID        = 1001;
 static const UINT_PTR RISK_TIMER   = 1;
-static const UINT_PTR SETTLE_TIMER = 2;   // one-shot: rebuild once a window is really gone
+static const UINT_PTR SETTLE_TIMER = 2;   // one-shot: rebuild after a window or tab is really gone
 static const UINT WM_APP_INITIAL = WM_APP + 1;   // start-up sweep, after the loop runs
 static const UINT WM_APP_REFRESH = WM_APP + 2;   // coalesced rebuild of an open report
 
@@ -651,15 +651,40 @@ static BOOL CALLBACK EnumApplyProc(HWND h, LPARAM lp) {
     return TRUE;
 }
 
-// New tabs are NOT top-level windows: pressing "+" only creates a
-// ShellTabWindowClass child inside an already-existing window, so ShellHook
-// never fires for it. This WinEvent hook catches that child creation and
-// re-applies the pair to its owner window.
+// Tabs are NOT top-level windows: pressing "+" only creates a
+// ShellTabWindowClass child inside an already-existing window, and closing one
+// destroys that child while the frame stays. Neither produces a ShellHook
+// message, so this WinEvent hook sees both. Creation re-applies the F11 pair to
+// the owner; destruction only has to refresh the surfaces, because the tab
+// count in brackets is a statement about the tabs the marked windows hold.
 static void CALLBACK WinEventProc(HWINEVENTHOOK, DWORD event, HWND hwnd,
                                   LONG idObject, LONG idChild, DWORD, DWORD) {
-    if (event != EVENT_OBJECT_CREATE || idObject != OBJID_WINDOW || idChild != 0)
+    if ((event != EVENT_OBJECT_CREATE && event != EVENT_OBJECT_DESTROY) ||
+        idObject != OBJID_WINDOW || idChild != 0)
         return;
     if (!hwnd) return;
+
+    if (event == EVENT_OBJECT_DESTROY) {
+        // A tab going away leaves the frame alive: no HSHELL_WINDOWDESTROYED
+        // arrives, so without this path nothing calls OnStateChanged and the
+        // tooltip cached in the shell keeps the old tab count. The menu is
+        // rebuilt on every open and already showed the new one - the two
+        // surfaces disagreed until some unrelated event pushed the tip.
+        //
+        // Deliberately BEFORE the class filter: by the time
+        // EVENT_OBJECT_DESTROY is delivered GetClassNameW(hwnd) already returns
+        // 0 (measured), so a ShellTabWindowClass check here would drop exactly
+        // the events this hook exists for. Likewise no IsMarked(parent) gate -
+        // GetParent is NULL at this point too. The cost of the missing filters
+        // is one redundant MarkedWindows() per window destroyed anywhere on the
+        // desktop, and PushTraySurface skips the IPC when nothing changed.
+        // Reuse the window-close timer so a burst collapses into one rebuild.
+        // Not gated on g_paused/g_tabs: those decide whether to POST F11, never
+        // whether to report the count.
+        SetTimer(g_hwnd, SETTLE_TIMER, 60, NULL);
+        return;
+    }
+
     wchar_t cn[64];
     if (GetClassNameW(hwnd, cn, 64) == 0 || wcscmp(cn, TAB_CLASS) != 0) return;
 
@@ -829,10 +854,10 @@ static void UpdateTrayTip() {
 // tray picture and an open report all hang off this single call, so a change
 // can never reach one of them and miss another.
 //
-// Nine events funnel through here: window created, destroyed, restored from
-// minimized, new tab, pause, apply, apply-all, the recovery timer and the
-// start-up sweep. The push itself is memoised inside PushTraySurface: one
-// NIM_MODIFY carries icon + tip together and is skipped entirely when the
+// Ten events funnel through here: window created, destroyed, restored from
+// minimized, new tab, tab closed, pause, apply, apply-all, the recovery timer
+// and the start-up sweep. The push itself is memoised inside PushTraySurface:
+// one NIM_MODIFY carries icon + tip together and is skipped entirely when the
 // freshly computed surface equals what the shell already holds. That keeps the
 // single-IPC property this path was given in 1.0.3 and removes the remaining
 // round trips from the events that do not change the tray at all.
@@ -1182,7 +1207,7 @@ static LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wParam, LPARAM lParam) 
             return -1;
         }
         AddTray(h);
-        g_winEvent = SetWinEventHook(EVENT_OBJECT_CREATE, EVENT_OBJECT_CREATE, NULL,
+        g_winEvent = SetWinEventHook(EVENT_OBJECT_CREATE, EVENT_OBJECT_DESTROY, NULL,
                                      WinEventProc, 0, 0,
                                      WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
         g_winEvent2 = SetWinEventHook(EVENT_SYSTEM_MINIMIZEEND, EVENT_SYSTEM_MINIMIZEEND,
